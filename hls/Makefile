@@ -59,7 +59,7 @@ LDFLAGS += -L$(XILINX_XRT)/lib/ -lpthread -lOpenCL
 
 ############################## Setting up Host Variables ##############################
 #Include Required Host Source Files
-CXXFLAGS += -I./src/xcl2.h
+CXXFLAGS += -I./src/
 HOST_SRCS += ./src/xcl2.cpp ./src/host.cpp 
 # Host compiler global settings
 CXXFLAGS += -fmessage-length=0

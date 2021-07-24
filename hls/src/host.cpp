@@ -1,4 +1,4 @@
-#include "xcl2.hpp"
+#include "xcl2.h"
 #include <algorithm>
 #include <vector>
 #define DATA_SIZE 4096
@@ -15,17 +15,13 @@ int main(int argc, char **argv) {
   cl::Context context;
   cl::Kernel krnl_vector_add;
   cl::CommandQueue q;
-  // Allocate Memory in Host Memory
-  // When creating a buffer with user pointer (CL_MEM_USE_HOST_PTR), under the
-  // hood user ptr
-  // is used if it is properly aligned. when not aligned, runtime had no choice
-  // but to create
-  // its own host side buffer. So it is recommended to use this allocator if
-  // user wish to
+  // Allocate Memory in Host Memory When creating a buffer with user pointer
+  // (CL_MEM_USE_HOST_PTR), under the hood user ptr is used if it is properly
+  // aligned. when not aligned, runtime had no choice but to create its own host
+  // side buffer. So it is recommended to use this allocator if user wish to
   // create buffer using CL_MEM_USE_HOST_PTR to align user buffer to page
-  // boundary. It will
-  // ensure that user buffer is used when user create Buffer/Mem object with
-  // CL_MEM_USE_HOST_PTR
+  // boundary. It will ensure that user buffer is used when user create
+  // Buffer/Mem object with CL_MEM_USE_HOST_PTR
   std::vector<int, aligned_allocator<int>> source_in1(DATA_SIZE);
   std::vector<int, aligned_allocator<int>> source_in2(DATA_SIZE);
   std::vector<int, aligned_allocator<int>> source_hw_results(DATA_SIZE);
