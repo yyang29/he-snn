@@ -29,16 +29,28 @@ TARGET := sw_emu
 HOST_ARCH := x86
 DEVICE := xilinx_u200_xdma_201830_2
 
-SYSROOT := 
+#Generates profile summary report
+PROFILE := no
+ifeq ($(PROFILE), yes)
+VPP_LDFLAGS += --profile.data all:all:all
+endif
 
-include ./utils.mk
+#Generates debug summary report
+DEBUG := no
+ifeq ($(DEBUG), yes)
+VPP_LDFLAGS += --dk list_ports
+endif
 
+#   device2xsa - create a filesystem friendly name from device name
+#   $(1) - full name of device
+device2xsa = $(strip $(patsubst %.xpfm, % , $(shell basename $(DEVICE))))
 XSA := $(call device2xsa, $(DEVICE))
+
 TEMP_DIR := ./_x.$(TARGET).$(XSA)
 BUILD_DIR := ./build_dir.$(TARGET).$(XSA)
-
 PACKAGE_OUT = ./package.$(TARGET)
 
+CXX := g++
 VPP := v++
 CMD_ARGS = $(BUILD_DIR)/he_snn.xclbin
 
@@ -51,7 +63,7 @@ CXXFLAGS += -I./src/xcl2.h
 HOST_SRCS += ./src/xcl2.cpp ./src/host.cpp 
 # Host compiler global settings
 CXXFLAGS += -fmessage-length=0
-LDFLAGS += -lrt -lstdc++ --sysroot=$(SYSROOT)
+LDFLAGS += -lrt -lstdc++
 
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
@@ -71,13 +83,13 @@ BINARY_CONTAINER_he_snn_OBJS += $(TEMP_DIR)/he_snn.xo
 CP = cp -rf
 
 .PHONY: all clean cleanall docs emconfig
-all: check-devices $(EXECUTABLE) $(BINARY_CONTAINERS) emconfig
+all: $(EXECUTABLE) $(BINARY_CONTAINERS) emconfig
 
 .PHONY: host
 host: $(EXECUTABLE)
 
 .PHONY: build
-build: check-vitis $(BINARY_CONTAINERS)
+build: $(BINARY_CONTAINERS)
 
 .PHONY: xclbin
 xclbin: build
@@ -92,7 +104,7 @@ $(BUILD_DIR)/he_snn.xclbin: $(BINARY_CONTAINER_he_snn_OBJS)
 	$(VPP) -p $(BUILD_DIR)/he_snn.link.xclbin -t $(TARGET) --platform $(DEVICE) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/he_snn.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################
-$(EXECUTABLE): $(HOST_SRCS) | check-xrt
+$(EXECUTABLE): $(HOST_SRCS)
 		$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
 
 emconfig:$(EMCONFIG_DIR)/emconfig.json
@@ -110,12 +122,17 @@ endif
 
 ############################## Cleaning Rules ##############################
 # Cleaning stuff
+RM = rm -f
+RMDIR = rm -rf
+
+ECHO:= @echo
+
 clean:
 	-$(RMDIR) $(EXECUTABLE) $(XCLBIN)/{*sw_emu*,*hw_emu*} 
 	-$(RMDIR) profile_* TempConfig system_estimate.xtxt *.rpt *.csv 
 	-$(RMDIR) src/*.ll *v++* .Xil emconfig.json dltmp* xmltmp* *.log *.jou *.wcfg *.wdb
 
 cleanall: clean
-	-$(RMDIR) build_dir* sd_card*
+	-$(RMDIR) build_dir*
 	-$(RMDIR) package.*
 	-$(RMDIR) _x* *xclbin.run_summary qemu-memory-_* emulation _vimage pl* start_simulation.sh *.xclbin
