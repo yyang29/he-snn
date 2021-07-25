@@ -3,6 +3,7 @@
 #include <vector>
 
 #define DATA_SIZE 4096
+#define NUM_CU 4
 
 int main(int argc, char **argv) {
   if (argc != 2) {
@@ -10,12 +11,6 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  std::string binaryFile = argv[1];
-  size_t vector_size_bytes = sizeof(int) * DATA_SIZE;
-  cl_int err;
-  cl::Context context;
-  cl::Kernel krnl_he_snn;
-  cl::CommandQueue q;
   // Allocate Memory in Host Memory When creating a buffer with user pointer
   // (CL_MEM_USE_HOST_PTR), under the hood user ptr is used if it is properly
   // aligned. when not aligned, runtime had no choice but to create its own host
@@ -23,96 +18,115 @@ int main(int argc, char **argv) {
   // create buffer using CL_MEM_USE_HOST_PTR to align user buffer to page
   // boundary. It will ensure that user buffer is used when user create
   // Buffer/Mem object with CL_MEM_USE_HOST_PTR
-  std::vector<int, aligned_allocator<int>> source_in1(DATA_SIZE);
-  std::vector<int, aligned_allocator<int>> source_in2(DATA_SIZE);
-  std::vector<int, aligned_allocator<int>> source_hw_results(DATA_SIZE);
-  std::vector<int, aligned_allocator<int>> source_sw_results(DATA_SIZE);
+  size_t vector_size_bytes = sizeof(int) * DATA_SIZE;
+  std::vector<std::vector<int, aligned_allocator<int>>> source_in1(
+      NUM_CU, std::vector<int, aligned_allocator<int>>(DATA_SIZE));
+  std::vector<std::vector<int, aligned_allocator<int>>> source_in2(
+      NUM_CU, std::vector<int, aligned_allocator<int>>(DATA_SIZE));
+  std::vector<std::vector<int, aligned_allocator<int>>> source_hw_results(
+      NUM_CU, std::vector<int, aligned_allocator<int>>(DATA_SIZE));
+  std::vector<std::vector<int, aligned_allocator<int>>> source_sw_results(
+      NUM_CU, std::vector<int, aligned_allocator<int>>(DATA_SIZE));
 
   // Create the test data
-  std::generate(source_in1.begin(), source_in1.end(), std::rand);
-  std::generate(source_in2.begin(), source_in2.end(), std::rand);
-  for (int i = 0; i < DATA_SIZE; i++) {
-    source_sw_results[i] = source_in1[i] + source_in2[i];
-    source_hw_results[i] = 0;
+  for (int i = 0; i < NUM_CU; i++) {
+    std::generate(source_in1[i].begin(), source_in1[i].end(), std::rand);
+    std::generate(source_in2[i].begin(), source_in2[i].end(), std::rand);
+    for (int j = 0; j < DATA_SIZE; j++) {
+      source_sw_results[i][j] = source_in1[i][j] + source_in2[i][j];
+      source_hw_results[i][j] = 0;
+    }
   }
 
   // OPENCL HOST CODE AREA START
+  cl_int err;
+  cl::Kernel krnl_he_snn;
+
   // get_xil_devices() is a utility API which will find the xilinx
   // platforms and will return list of devices connected to Xilinx platform
   auto devices = xcl::get_xil_devices();
+  auto device = devices[0];
+
+  // Creating Context and Command Queue for selected Device
+  OCL_CHECK(err, cl::Context context(device, nullptr, nullptr, nullptr, &err));
+  OCL_CHECK(err, cl::CommandQueue q(context, device,
+                                    CL_QUEUE_PROFILING_ENABLE |
+                                        CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE,
+                                    &err));
+
   // read_binary_file() is a utility API which will load the binaryFile
   // and will return the pointer to file buffer.
-  auto fileBuf = xcl::read_binary_file(binaryFile);
+  auto fileBuf = xcl::read_binary_file(static_cast<std::string>(argv[1]));
   cl::Program::Binaries bins{{fileBuf.data(), fileBuf.size()}};
-  bool valid_device = false;
-  for (unsigned int i = 0; i < devices.size(); i++) {
-    auto device = devices[i];
-    // Creating Context and Command Queue for selected Device
-    OCL_CHECK(err,
-              context = cl::Context(device, nullptr, nullptr, nullptr, &err));
-    OCL_CHECK(err, q = cl::CommandQueue(context, device,
-                                        CL_QUEUE_PROFILING_ENABLE, &err));
-    std::cout << "Trying to program device[" << i
-              << "]: " << device.getInfo<CL_DEVICE_NAME>() << std::endl;
-    cl::Program program(context, {device}, bins, nullptr, &err);
-    if (err != CL_SUCCESS) {
-      std::cout << "Failed to program device[" << i << "] with xclbin file!\n";
-    } else {
-      std::cout << "Device[" << i << "]: program successful!\n";
-      OCL_CHECK(err, krnl_he_snn = cl::Kernel(program, "he_snn", &err));
-      valid_device = true;
-      break; // we break because we found a valid device
-    }
-  }
-  if (!valid_device) {
-    std::cout << "Failed to program any device found, exit!\n";
-    exit(EXIT_FAILURE);
-  }
+  cl::Program program(context, {device}, bins, nullptr, &err);
+  OCL_CHECK(err, krnl_he_snn = cl::Kernel(program, "he_snn", &err));
 
   // Allocate Buffer in Global Memory
   // Buffers are allocated using CL_MEM_USE_HOST_PTR for efficient memory and
   // Device-to-host communication
-  OCL_CHECK(err, cl::Buffer buffer_in1(
-                     context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-                     vector_size_bytes, source_in1.data(), &err));
-  OCL_CHECK(err, cl::Buffer buffer_in2(
-                     context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-                     vector_size_bytes, source_in2.data(), &err));
-  OCL_CHECK(err, cl::Buffer buffer_output(
-                     context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY,
-                     vector_size_bytes, source_hw_results.data(), &err));
+  std::vector<cl::Buffer> buffer_in1(NUM_CU), buffer_in2(NUM_CU),
+      buffer_output(NUM_CU);
 
-  int size = DATA_SIZE;
-  OCL_CHECK(err, err = krnl_he_snn.setArg(0, buffer_in1));
-  OCL_CHECK(err, err = krnl_he_snn.setArg(1, buffer_in2));
-  OCL_CHECK(err, err = krnl_he_snn.setArg(2, buffer_output));
-  OCL_CHECK(err, err = krnl_he_snn.setArg(3, size));
+  for (int i = 0; i < NUM_CU; i++) {
+    OCL_CHECK(err, buffer_in1[i] = cl::Buffer(
+                       context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
+                       vector_size_bytes, source_in1[i].data(), &err));
+    OCL_CHECK(err, buffer_in2[i] = cl::Buffer(
+                       context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
+                       vector_size_bytes, source_in2[i].data(), &err));
+    OCL_CHECK(err, buffer_output[i] = cl::Buffer(
+                       context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY,
+                       vector_size_bytes, source_hw_results[i].data(), &err));
+  }
+
+  // Using events to ensure dependencies
+  std::vector<cl::Event> write_event(NUM_CU), read_event(NUM_CU),
+      task_event(NUM_CU);
+  std::vector<std::vector<cl::Event>> waiting_events(NUM_CU);
 
   // Copy input data to device global memory
-  OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2},
-                                                  0 /* 0 means from host*/));
+  for (int i = 0; i < NUM_CU; i++) {
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
+                       {buffer_in1[i], buffer_in2[i]}, 0 /* 0 means from host*/,
+                       NULL, &write_event[i]));
+    waiting_events[i].push_back(write_event[i]);
 
-  // Launch the Kernel
-  // For HLS kernels global and local size is always (1,1,1). So, it is
-  // recommended
-  // to always use enqueueTask() for invoking HLS kernel
-  OCL_CHECK(err, err = q.enqueueTask(krnl_he_snn));
+    // Launch the Kernel
+    // For HLS kernels global and local size is always (1,1,1). So, it is
+    // recommended
+    // to always use enqueueTask() for invoking HLS kernel
+    OCL_CHECK(err, err = krnl_he_snn.setArg(0, buffer_in1[i]));
+    OCL_CHECK(err, err = krnl_he_snn.setArg(1, buffer_in2[i]));
+    OCL_CHECK(err, err = krnl_he_snn.setArg(2, buffer_output[i]));
+    OCL_CHECK(err, err = krnl_he_snn.setArg(3, DATA_SIZE));
+    OCL_CHECK(err, err = q.enqueueTask(krnl_he_snn, &waiting_events[i],
+                                       &task_event[i]));
+    waiting_events[i].push_back(task_event[i]);
 
-  // Copy Result from Device Global Memory to Host Local Memory
-  OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output},
-                                                  CL_MIGRATE_MEM_OBJECT_HOST));
-  q.finish();
+    // Copy Result from Device Global Memory to Host Local Memory
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
+                       {buffer_output[i]}, CL_MIGRATE_MEM_OBJECT_HOST,
+                       &waiting_events[i], &read_event[i]));
+    waiting_events[i].push_back(read_event[i]);
+  }
+
+  // Wait kernel to finish
+  for (int i = 0; i < NUM_CU; i++) {
+    read_event[i].wait();
+  }
   // OPENCL HOST CODE AREA END
 
   // Compare the results of the Device to the simulation
   bool match = true;
-  for (int i = 0; i < DATA_SIZE; i++) {
-    if (source_hw_results[i] != source_sw_results[i]) {
-      std::cout << "Error: Result mismatch" << std::endl;
-      std::cout << "i = " << i << " CPU result = " << source_sw_results[i]
-                << " Device result = " << source_hw_results[i] << std::endl;
-      match = false;
-      break;
+  for (int i = 0; i < NUM_CU; i++) {
+    for (int j = 0; j < DATA_SIZE; j++) {
+      if (source_hw_results[i][j] != source_sw_results[i][j]) {
+        std::cout << "Error: CU " << i << " Result mismatch" << std::endl;
+        std::cout << "j = " << j << " CPU result = " << source_sw_results[i][j]
+                  << " Device result = " << source_hw_results[i][j] << std::endl;
+        match = false;
+        break;
+      }
     }
   }
 
