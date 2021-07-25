@@ -1,2 +1,5 @@
 .*
+hls/build_dir*/**
+hls/_x.*/**
+hls/*.log
 !/.gitignore

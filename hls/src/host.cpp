@@ -1,6 +1,7 @@
 #include "xcl2.h"
 #include <algorithm>
 #include <vector>
+
 #define DATA_SIZE 4096
 
 int main(int argc, char **argv) {

@@ -1,4 +1,4 @@
-#include "xcl2.hpp"
+#include "xcl2.h"
 #include <climits>
 #include <iomanip>
 #include <sstream>
