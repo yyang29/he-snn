@@ -2,4 +2,5 @@
 hls/build_dir*/**
 hls/_x.*/**
 hls/*.log
+hls/vitis_analyzer.jou
 !/.gitignore
