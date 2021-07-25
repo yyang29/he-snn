@@ -48,7 +48,6 @@ XSA := $(call device2xsa, $(DEVICE))
 
 TEMP_DIR := ./_x.$(TARGET).$(XSA)
 BUILD_DIR := ./build_dir.$(TARGET).$(XSA)
-PACKAGE_OUT = ./package.$(TARGET)
 
 CXX := g++
 VPP := v++
@@ -67,7 +66,7 @@ LDFLAGS += -lrt -lstdc++
 
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
-VPP_FLAGS += -t $(TARGET) --platform $(DEVICE) --save-temps 
+VPP_FLAGS += -t $(TARGET) --platform $(DEVICE) --config he_snn.cfg --save-temps 
 ifneq ($(TARGET), hw)
 	VPP_FLAGS += -g
 endif
@@ -100,8 +99,7 @@ $(TEMP_DIR)/he_snn.xo: src/he_snn.cpp
 	$(VPP) $(VPP_FLAGS) -c -k he_snn --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 $(BUILD_DIR)/he_snn.xclbin: $(BINARY_CONTAINER_he_snn_OBJS)
 	mkdir -p $(BUILD_DIR)
-	$(VPP) $(VPP_FLAGS) -l $(VPP_LDFLAGS) --temp_dir $(TEMP_DIR)  -o'$(BUILD_DIR)/he_snn.link.xclbin' $(+)
-	$(VPP) -p $(BUILD_DIR)/he_snn.link.xclbin -t $(TARGET) --platform $(DEVICE) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/he_snn.xclbin
+	$(VPP) $(VPP_FLAGS) -l $(VPP_LDFLAGS) --temp_dir $(TEMP_DIR)  -o'$(BUILD_DIR)/he_snn.xclbin' $(+)
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################
 $(EXECUTABLE): $(HOST_SRCS)
@@ -134,5 +132,4 @@ clean:
 
 cleanall: clean
 	-$(RMDIR) build_dir*
-	-$(RMDIR) package.*
-	-$(RMDIR) _x* *xclbin.run_summary qemu-memory-_* emulation _vimage pl* start_simulation.sh *.xclbin
+	-$(RMDIR) _x* *xclbin.run_summary emulation _vimage pl* start_simulation.sh *.xclbin

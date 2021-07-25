@@ -65,7 +65,8 @@ void he_snn(hls::vector<unsigned int, 16> *in1,
       "input_stream_2");
   static hls::stream<hls::vector<unsigned int, 16>> out_stream("output_stream");
 
-  // Since 16 values are processed in parallel per loop iteration, the for loop only needs to iterate 'size / 16' times.
+  // Since 16 values are processed in parallel per loop iteration, the for loop
+  // only needs to iterate 'size / 16' times.
   assert(size % 16 == 0);
   int vSize = size / 16;
 #pragma HLS dataflow
