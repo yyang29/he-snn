@@ -27,6 +27,9 @@ int main(int argc, char **argv) {
       NUM_CU, std::vector<int, aligned_allocator<int>>(DATA_SIZE));
   std::vector<std::vector<int, aligned_allocator<int>>> source_sw_results(
       NUM_CU, std::vector<int, aligned_allocator<int>>(DATA_SIZE));
+  std::vector<cl_mem_ext_ptr_t> source_in1_ext(NUM_CU);
+  std::vector<cl_mem_ext_ptr_t> source_in2_ext(NUM_CU);
+  std::vector<cl_mem_ext_ptr_t> source_hw_results_ext(NUM_CU);
 
   // Create the test data
   for (int i = 0; i < NUM_CU; i++) {
@@ -36,6 +39,28 @@ int main(int argc, char **argv) {
       source_sw_results[i][j] = source_in1[i][j] + source_in2[i][j];
       source_hw_results[i][j] = 0;
     }
+
+    // DDR Assignment
+    if (i == 0) {
+      source_in1_ext[i].flags = XCL_MEM_DDR_BANK0;
+      source_in2_ext[i].flags = XCL_MEM_DDR_BANK0;
+      source_hw_results_ext[i].flags = XCL_MEM_DDR_BANK0;
+    } else if (i == 1) {
+      source_in1_ext[i].flags = XCL_MEM_DDR_BANK1;
+      source_in2_ext[i].flags = XCL_MEM_DDR_BANK1;
+      source_hw_results_ext[i].flags = XCL_MEM_DDR_BANK1;
+    } else if (i == 2) {
+      source_in1_ext[i].flags = XCL_MEM_DDR_BANK2;
+      source_in2_ext[i].flags = XCL_MEM_DDR_BANK2;
+      source_hw_results_ext[i].flags = XCL_MEM_DDR_BANK2;
+    } else {
+      source_in1_ext[i].flags = XCL_MEM_DDR_BANK3;
+      source_in2_ext[i].flags = XCL_MEM_DDR_BANK3;
+      source_hw_results_ext[i].flags = XCL_MEM_DDR_BANK3;
+    }
+    source_in1_ext[i].obj = source_in1[i].data();
+    source_in2_ext[i].obj = source_in2[i].data();
+    source_hw_results_ext[i].obj = source_hw_results[i].data();
   }
 
   // OPENCL HOST CODE AREA START
@@ -68,15 +93,21 @@ int main(int argc, char **argv) {
       buffer_output(NUM_CU);
 
   for (int i = 0; i < NUM_CU; i++) {
-    OCL_CHECK(err, buffer_in1[i] = cl::Buffer(
-                       context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-                       vector_size_bytes, source_in1[i].data(), &err));
-    OCL_CHECK(err, buffer_in2[i] = cl::Buffer(
-                       context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY,
-                       vector_size_bytes, source_in2[i].data(), &err));
+    OCL_CHECK(err, buffer_in1[i] =
+                       cl::Buffer(context,
+                                  CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY |
+                                      CL_MEM_EXT_PTR_XILINX,
+                                  vector_size_bytes, &source_in1_ext[i], &err));
+    OCL_CHECK(err, buffer_in2[i] =
+                       cl::Buffer(context,
+                                  CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY |
+                                      CL_MEM_EXT_PTR_XILINX,
+                                  vector_size_bytes, &source_in2_ext[i], &err));
     OCL_CHECK(err, buffer_output[i] = cl::Buffer(
-                       context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY,
-                       vector_size_bytes, source_hw_results[i].data(), &err));
+                       context,
+                       CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY |
+                           CL_MEM_EXT_PTR_XILINX,
+                       vector_size_bytes, &source_hw_results_ext[i], &err));
   }
 
   // Using events to ensure dependencies
@@ -127,7 +158,8 @@ int main(int argc, char **argv) {
       if (source_hw_results[i][j] != source_sw_results[i][j]) {
         std::cout << "Error: CU " << i << " Result mismatch" << std::endl;
         std::cout << "j = " << j << " CPU result = " << source_sw_results[i][j]
-                  << " Device result = " << source_hw_results[i][j] << std::endl;
+                  << " Device result = " << source_hw_results[i][j]
+                  << std::endl;
         match = false;
         break;
       }
