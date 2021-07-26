@@ -90,7 +90,9 @@ int main(int argc, char **argv) {
                        {buffer_in1[i], buffer_in2[i]}, 0 /* 0 means from host*/,
                        NULL, &write_event[i]));
     waiting_events[i].push_back(write_event[i]);
+  }
 
+  for (int i = 0; i < NUM_CU; i++) {
     // Launch the Kernel
     // For HLS kernels global and local size is always (1,1,1). So, it is
     // recommended
@@ -102,7 +104,9 @@ int main(int argc, char **argv) {
     OCL_CHECK(err, err = q.enqueueTask(krnl_he_snn, &waiting_events[i],
                                        &task_event[i]));
     waiting_events[i].push_back(task_event[i]);
+  }
 
+  for (int i = 0; i < NUM_CU; i++) {
     // Copy Result from Device Global Memory to Host Local Memory
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
                        {buffer_output[i]}, CL_MIGRATE_MEM_OBJECT_HOST,
