@@ -65,7 +65,8 @@ int main(int argc, char **argv) {
 
   // OPENCL HOST CODE AREA START
   cl_int err;
-  cl::Kernel krnl_he_snn;
+  std::string krnl_name = "he_snn";
+  std::vector<cl::Kernel> krnl_he_snn(NUM_CU);
 
   // get_xil_devices() is a utility API which will find the xilinx
   // platforms and will return list of devices connected to Xilinx platform
@@ -84,7 +85,13 @@ int main(int argc, char **argv) {
   auto fileBuf = xcl::read_binary_file(static_cast<std::string>(argv[1]));
   cl::Program::Binaries bins{{fileBuf.data(), fileBuf.size()}};
   cl::Program program(context, {device}, bins, nullptr, &err);
-  OCL_CHECK(err, krnl_he_snn = cl::Kernel(program, "he_snn", &err));
+
+  // Create kernels specific to compute unit.
+  for (int i = 0; i < NUM_CU; i++) {
+    std::string cu_id = std::to_string(i);
+    std::string krnl_name_full = krnl_name + ":{" + "he_snn_" + cu_id + "}";
+    OCL_CHECK(err, krnl_he_snn[i] = cl::Kernel(program, krnl_name_full.c_str(), &err));
+  }
 
   // Allocate Buffer in Global Memory
   // Buffers are allocated using CL_MEM_USE_HOST_PTR for efficient memory and
@@ -128,11 +135,11 @@ int main(int argc, char **argv) {
     // For HLS kernels global and local size is always (1,1,1). So, it is
     // recommended
     // to always use enqueueTask() for invoking HLS kernel
-    OCL_CHECK(err, err = krnl_he_snn.setArg(0, buffer_in1[i]));
-    OCL_CHECK(err, err = krnl_he_snn.setArg(1, buffer_in2[i]));
-    OCL_CHECK(err, err = krnl_he_snn.setArg(2, buffer_output[i]));
-    OCL_CHECK(err, err = krnl_he_snn.setArg(3, DATA_SIZE));
-    OCL_CHECK(err, err = q.enqueueTask(krnl_he_snn, &waiting_events[i],
+    OCL_CHECK(err, err = krnl_he_snn[i].setArg(0, buffer_in1[i]));
+    OCL_CHECK(err, err = krnl_he_snn[i].setArg(1, buffer_in2[i]));
+    OCL_CHECK(err, err = krnl_he_snn[i].setArg(2, buffer_output[i]));
+    OCL_CHECK(err, err = krnl_he_snn[i].setArg(3, DATA_SIZE));
+    OCL_CHECK(err, err = q.enqueueTask(krnl_he_snn[i], &waiting_events[i],
                                        &task_event[i]));
     waiting_events[i].push_back(task_event[i]);
   }
