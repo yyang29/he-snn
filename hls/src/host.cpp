@@ -28,6 +28,8 @@ int main(int argc, char **argv) {
   // ap_int<16> NNZ[NUM_MEM_BANKS][COUT_PER_BANK];
   // ap_int<64> weight_values[NUM_MEM_BANKS][COUT_PER_BANK * MAX_ROWS];
   // ap_int<16> weight_indices[NUM_MEM_BANKS][COUT_PER_BANK * MAX_ROWS];
+  // ap_int<64> tf_ntt[NUM_MEM_BANKS][NUM_CU_PER_BANK * N];
+  // ap_int<64> tf_intt[NUM_MEM_BANKS][NUM_CU_PER_BANK * N];
   std::vector<std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>> NNZ(
       NUM_MEM_BANKS,
       std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>(COUT_PER_BANK));
@@ -45,8 +47,13 @@ int main(int argc, char **argv) {
   std::vector<std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>> out_act(
       NUM_MEM_BANKS, std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>(
                          COUT_PER_BANK * CIPHERTEXT));
-  // ap_int<64> tf_ntt[NUM_MEM_BANKS][NUM_CU_PER_BANK * N];
-  // ap_int<64> tf_intt[NUM_MEM_BANKS][NUM_CU_PER_BANK * N];
+  // Twiddle factor memory depends on Number of CUs
+  std::vector<std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>> tf_ntt(
+      NUM_MEM_BANKS, std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>(
+                         NUM_CU_PER_BANK * N));
+  std::vector<std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>> tf_intt(
+      NUM_MEM_BANKS, std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>(
+                         NUM_CU_PER_BANK * N));
 
   for (int i = 0; i < NUM_MEM_BANKS; i++) {
     for (int j = 0; j < COUT_PER_BANK; j++) {
