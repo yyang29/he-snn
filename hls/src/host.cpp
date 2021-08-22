@@ -8,6 +8,7 @@
 #include "layer_defs.h"
 
 #define DATA_SIZE 4096
+
 #define NUM_CU 4
 #define NUM_MEM_BANKS 4
 #define NUM_CU_PER_BANK NUM_CU / NUM_MEM_BANKS
@@ -26,27 +27,38 @@ int main(int argc, char **argv) {
   const int CIN_PER_BANK = std::ceil((float)C_IN / (float)NUM_MEM_BANKS);
 
   // ap_int<16> NNZ[NUM_MEM_BANKS][COUT_PER_BANK];
-  // ap_int<64> weight_values[NUM_MEM_BANKS][COUT_PER_BANK * MAX_ROWS];
+  // ap_int<16> weight_values[NUM_MEM_BANKS][COUT_PER_BANK * MAX_ROWS];
   // ap_int<16> weight_indices[NUM_MEM_BANKS][COUT_PER_BANK * MAX_ROWS];
   // ap_int<64> tf_ntt[NUM_MEM_BANKS][NUM_CU_PER_BANK * N];
   // ap_int<64> tf_intt[NUM_MEM_BANKS][NUM_CU_PER_BANK * N];
+
+  // sparsity map
   std::vector<std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>> NNZ(
       NUM_MEM_BANKS,
-      std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>(COUT_PER_BANK));
+      std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>(COUT_PER_BANK, 0));
+
+  // weight values
   std::vector<std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>>
       weight_values(NUM_MEM_BANKS,
                     std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>(
-                        COUT_PER_BANK * MAX_ROWS));
+                        COUT_PER_BANK * MAX_ROWS, 0));
+
+  // weight indices
   std::vector<std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>>
       weight_indices(NUM_MEM_BANKS,
                      std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>(
-                         COUT_PER_BANK * MAX_ROWS));
+                         COUT_PER_BANK * MAX_ROWS, 0));
+
+  // input activations
   std::vector<std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>> in_act(
       NUM_MEM_BANKS, std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>(
                          CIN_PER_BANK * K_H * K_W * CIPHERTEXT));
+
+  // output activations
   std::vector<std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>> out_act(
       NUM_MEM_BANKS, std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>(
-                         COUT_PER_BANK * CIPHERTEXT));
+                         COUT_PER_BANK * CIPHERTEXT, 0));
+
   // Twiddle factor memory depends on Number of CUs
   std::vector<std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>> tf_ntt(
       NUM_MEM_BANKS, std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>(
@@ -55,14 +67,11 @@ int main(int argc, char **argv) {
       NUM_MEM_BANKS, std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>(
                          NUM_CU_PER_BANK * N));
 
+  // Initialize input data
   for (int i = 0; i < NUM_MEM_BANKS; i++) {
-    for (int j = 0; j < COUT_PER_BANK; j++) {
-      NNZ[i][j] = 0;
-      for (int k = 0; k < MAX_ROWS; k++) {
-        weight_values[i][j * MAX_ROWS + k] = 0;
-        weight_indices[i][j * MAX_ROWS + k] = 0;
-      }
-    }
+    std::generate(in_act[i].begin(), in_act[i].end(), std::rand);
+    std::generate(tf_ntt[i].begin(), tf_ntt[i].end(), std::rand);
+    std::generate(tf_intt[i].begin(), tf_intt[i].end(), std::rand);
   }
 
   // parsing weight file
