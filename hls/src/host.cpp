@@ -1,15 +1,110 @@
 #include "xcl2.h"
 #include <algorithm>
+#include <fstream>
+#include <string>
 #include <vector>
+
+#include "ap_int.h"
+#include "layer_defs.h"
 
 #define DATA_SIZE 4096
 #define NUM_CU 4
+#define NUM_MEM_BANKS 4
+#define NUM_CU_PER_BANK NUM_CU / NUM_MEM_BANKS
 
 int main(int argc, char **argv) {
-  if (argc != 2) {
-    std::cout << "Usage: " << argv[0] << " <XCLBIN File>" << std::endl;
+  if (argc != 3) {
+    std::cout << "Usage: " << argv[0] << " <XCLBIN File> <weight csv path>"
+              << std::endl;
     return EXIT_FAILURE;
   }
+
+  std::string filename(argv[2]);
+  std::cout << "weight file: " << filename << std::endl;
+
+  const int COUT_PER_BANK = std::ceil((float)C_OUT / (float)NUM_MEM_BANKS);
+  const int CIN_PER_BANK = std::ceil((float)C_IN / (float)NUM_MEM_BANKS);
+
+  // ap_int<16> NNZ[NUM_MEM_BANKS][COUT_PER_BANK];
+  // ap_int<64> weight_values[NUM_MEM_BANKS][COUT_PER_BANK * MAX_ROWS];
+  // ap_int<16> weight_indices[NUM_MEM_BANKS][COUT_PER_BANK * MAX_ROWS];
+  std::vector<std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>> NNZ(
+      NUM_MEM_BANKS,
+      std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>(COUT_PER_BANK));
+  std::vector<std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>>
+      weight_values(NUM_MEM_BANKS,
+                    std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>(
+                        COUT_PER_BANK * MAX_ROWS));
+  std::vector<std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>>
+      weight_indices(NUM_MEM_BANKS,
+                     std::vector<ap_int<16>, aligned_allocator<ap_int<16>>>(
+                         COUT_PER_BANK * MAX_ROWS));
+  std::vector<std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>> in_act(
+      NUM_MEM_BANKS, std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>(
+                         CIN_PER_BANK * K_H * K_W * CIPHERTEXT));
+  std::vector<std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>> out_act(
+      NUM_MEM_BANKS, std::vector<ap_int<64>, aligned_allocator<ap_int<64>>>(
+                         COUT_PER_BANK * CIPHERTEXT));
+  // ap_int<64> tf_ntt[NUM_MEM_BANKS][NUM_CU_PER_BANK * N];
+  // ap_int<64> tf_intt[NUM_MEM_BANKS][NUM_CU_PER_BANK * N];
+
+  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+    for (int j = 0; j < COUT_PER_BANK; j++) {
+      NNZ[i][j] = 0;
+      for (int k = 0; k < MAX_ROWS; k++) {
+        weight_values[i][j * MAX_ROWS + k] = 0;
+        weight_indices[i][j * MAX_ROWS + k] = 0;
+      }
+    }
+  }
+
+  // parsing weight file
+  std::fstream ifs;
+  ifs.open(filename);
+  int row_id = 0;
+  while (true) {
+    std::string line;
+    double buf;
+    getline(ifs, line);
+    std::stringstream ss(line, std::ios_base::out | std::ios_base::in |
+                                   std::ios_base::binary);
+
+    if (!ifs)
+      break;
+    if (line[0] == '#' || line.empty())
+      continue;
+
+    std::vector<double> row;
+    while (ss >> buf)
+      row.push_back(buf);
+
+    for (int i = 0; i < row.size(); i++) {
+      int quantized = static_cast<int>((row[i] + 1) / 2 * 255);
+      if (quantized != 127) {
+        int c_out_id = i % NUM_MEM_BANKS;
+        int c_out_offset = i / NUM_MEM_BANKS;
+        int current_nnz = NNZ[c_out_id][c_out_offset];
+        weight_values[c_out_id][c_out_offset * MAX_ROWS + current_nnz] =
+            quantized;
+        weight_indices[c_out_id][c_out_offset * MAX_ROWS + current_nnz] =
+            row_id;
+        NNZ[c_out_id][c_out_offset]++;
+      }
+    }
+    row_id++;
+  }
+
+  /*
+  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+    for (int j = 0; j < COUT_PER_BANK; j++) {
+      std::cout << "NNZs " << NNZ[i][j] << std::endl;
+      for (int k = 0; k < MAX_ROWS; k++) {
+        std::cout << weight_indices[i][j * MAX_ROWS + k] << " ";
+      }
+      std::cout << std::endl;
+    }
+  }
+  */
 
   // Allocate Memory in Host Memory When creating a buffer with user pointer
   // (CL_MEM_USE_HOST_PTR), under the hood user ptr is used if it is properly
@@ -90,7 +185,8 @@ int main(int argc, char **argv) {
   for (int i = 0; i < NUM_CU; i++) {
     std::string cu_id = std::to_string(i);
     std::string krnl_name_full = krnl_name + ":{" + "he_snn_" + cu_id + "}";
-    OCL_CHECK(err, krnl_he_snn[i] = cl::Kernel(program, krnl_name_full.c_str(), &err));
+    OCL_CHECK(err, krnl_he_snn[i] =
+                       cl::Kernel(program, krnl_name_full.c_str(), &err));
   }
 
   // Allocate Buffer in Global Memory
