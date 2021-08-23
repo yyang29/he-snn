@@ -66,7 +66,7 @@ LDFLAGS += -lrt -lstdc++
 
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
-VPP_FLAGS += -t $(TARGET) --platform $(DEVICE) --config he_snn.cfg --save-temps 
+VPP_FLAGS += -t $(TARGET) --platform $(DEVICE) --config he_snn.cfg --save-temps -R2
 ifneq ($(TARGET), hw)
 	VPP_FLAGS += -g
 endif
