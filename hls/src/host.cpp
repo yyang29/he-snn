@@ -280,7 +280,6 @@ int main(int argc, char **argv) {
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
                        {buffer_out_act[i]}, CL_MIGRATE_MEM_OBJECT_HOST,
                        &waiting_events, &out_act_read_event[i]));
-    waiting_events.push_back(out_act_read_event[i]);
   }
 
   // Wait kernel to finish
