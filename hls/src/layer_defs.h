@@ -1,3 +1,5 @@
+#include <cmath>
+
 #ifndef LAYER_DEFS_H
 #define LAYER_DEFS_H
 
@@ -20,5 +22,15 @@
 #define NUM_CIPHERTEXT_POLY 2
 
 #define CIPHERTEXT N * R * NUM_CIPHERTEXT_POLY
+
+#define NUM_CU 4
+#define NUM_MEM_BANKS 4
+#define NUM_CU_PER_BANK NUM_CU / NUM_MEM_BANKS
+
+#define BYTES_INT16 2
+#define BYTES_INT64 8
+
+const int COUT_PER_BANK = ceil((float)C_OUT / (float)NUM_MEM_BANKS);
+const int CIN_PER_BANK = ceil((float)C_IN / (float)NUM_MEM_BANKS);
 
 #endif  // LAYER_DEFS_H
