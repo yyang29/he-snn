@@ -21,16 +21,17 @@
 // hardware config
 #define NUM_CU 32
 #define NUM_MEM_BANKS 4
-#define NUM_CU_PER_BANK NUM_CU / NUM_MEM_BANKS
+#define NUM_CU_PER_BANK (NUM_CU / NUM_MEM_BANKS)
 
 // derived config
-#define MAX_ROWS K_H * K_W * C_IN
+#define MAX_ROWS (K_H * K_W * C_IN)
 
 #define N 8192
 #define R 4
 #define NUM_CIPHERTEXT_POLY 2
 
-#define CIPHERTEXT N * R * NUM_CIPHERTEXT_POLY
+#define CIPHERTEXT (N * R * NUM_CIPHERTEXT_POLY)
+#define q_0 = 18446744073709551557
 
 #define BYTES_INT16 2
 #define BYTES_INT64 8
@@ -41,9 +42,17 @@
 const int COUT_PER_BANK = ceil((float)C_OUT / (float)NUM_MEM_BANKS);
 const int CIN_PER_BANK = ceil((float)C_IN / (float)NUM_MEM_BANKS);
 const int COUT_PER_CU = ceil((float)COUT_PER_BANK / (float)NUM_CU_PER_BANK);
+const int CIN_PER_CU = ceil((float)CIN_PER_BANK / (float)NUM_CU_PER_BANK);
 
 struct Polynomial {
   ap_uint<COEF_WIDTH> data[N];
+};
+
+#define COEF_BUNDLE_BITS 512
+#define COEF_PER_BEAT (COEF_BUNDLE_BITS / COEF_WIDTH)
+
+struct Coef_Bundle {
+  ap_uint<COEF_WIDTH> data[COEF_PER_BEAT];
 };
 
 #endif  // LAYER_DEFS_H
