@@ -80,25 +80,22 @@ load_act_sparse(Coef_Bundle in_act_0[CIN_PER_BANK * K_H * K_W * R *
                 hls::stream<Coef_Bundle> in_act_stream_1[NUM_CU_PER_BANK],
                 hls::stream<Coef_Bundle> in_act_stream_2[NUM_CU_PER_BANK],
                 hls::stream<Coef_Bundle> in_act_stream_3[NUM_CU_PER_BANK]) {
-#pragma HLS pipeline II = 1
   // TODO: Polynomials are organized in the following order:
   // R * NUM_CIPHERTEXT_POLY * CIN_PER_BANK * K_H * K_W
-in_act_cin_rd:
-  for (unsigned int j = 0; j < NUM_CU_PER_BANK; j++) {
+  // Each activation is loaded COUT_PER_CU times.
+  for (unsigned int n = 0; n < COUT_PER_CU; n++) {
+    for (unsigned int k = 0; k < R * NUM_CIPHERTEXT_POLY * MAX_ACT_ITRS; k++) {
+      for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+        for (unsigned int j = 0; j < NUM_CU_PER_BANK; j++) {
 #pragma HLS unroll
-    unsigned int polynomial_base_offset =
-        j * MAX_ACT_ITRS * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT;
-    // Each activation is loaded COUT_PER_CU times.
-    for (unsigned int n = 0; n < COUT_PER_CU; n++) {
-      for (unsigned int k = 0; k < R * NUM_CIPHERTEXT_POLY * MAX_ACT_ITRS;
-           k++) {
-        int polynomial_offset = polynomial_base_offset + k * N / COEF_PER_BEAT;
-        for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+          unsigned int polynomial_base_offset =
+              j * MAX_ACT_ITRS * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT;
+          int polynomial_offset =
+              polynomial_base_offset + k * N / COEF_PER_BEAT + m;
           in_act_stream_0[j] << in_act_0[polynomial_offset];
           in_act_stream_1[j] << in_act_1[polynomial_offset];
           in_act_stream_2[j] << in_act_2[polynomial_offset];
           in_act_stream_3[j] << in_act_3[polynomial_offset];
-          polynomial_offset++;
         }
       }
     }
@@ -114,25 +111,21 @@ compute_linear(hls::stream<Coef_Bundle> in_act_stream_0[NUM_CU_PER_BANK],
                hls::stream<Coef_Bundle> pre_act_stream_1[NUM_CU_PER_BANK],
                hls::stream<Coef_Bundle> pre_act_stream_2[NUM_CU_PER_BANK],
                hls::stream<Coef_Bundle> pre_act_stream_3[NUM_CU_PER_BANK]) {
-#pragma HLS pipeline II = 1
   // activation buffer
   Coef_Bundle in_act_buffer[NUM_CU][N / COEF_PER_BEAT];
-#pragma HLS array_partition variable = in_act_buffer type = cyclic factor =    \
-                                                                               \
-    NUM_CU dim = 1
+#pragma HLS array_partition variable=in_act_buffer cyclic factor=32 dim=1
   Coef_Bundle partial_sum_buffer[NUM_CU][N / COEF_PER_BEAT];
-#pragma HLS array_partition variable = partial_sum_buffer type =               \
-    cyclic factor = NUM_CU dim = 1
+#pragma HLS array_partition variable=partial_sum_buffer cyclic factor=32 dim=1
 
-  for (unsigned int i = 0; i < NUM_CU; i++) {
+  for (unsigned int j = 0; j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY; j++) {
+
+    // accumulation
+    // TODO: Change this based on sparsity
+    for (unsigned int k = 0; k < MAX_ACT_ITRS; k++) {
+      for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+        for (unsigned int i = 0; i < NUM_CU; i++) {
 #pragma HLS unroll
-    unsigned int per_bank_cu_offset = i % NUM_CU_PER_BANK;
-    for (unsigned int j = 0; j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY; j++) {
-
-      // accumulation
-      // TODO: Change this based on sparsity
-      for (unsigned int k = 0; k < MAX_ACT_ITRS; k++) {
-        for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+          unsigned int per_bank_cu_offset = i % NUM_CU_PER_BANK;
           if (i < 1 * NUM_CU_PER_BANK) {
             in_act_buffer[i][m] = in_act_stream_0[per_bank_cu_offset].read();
           } else if (i < 2 * NUM_CU_PER_BANK) {
@@ -143,17 +136,24 @@ compute_linear(hls::stream<Coef_Bundle> in_act_stream_0[NUM_CU_PER_BANK],
             in_act_buffer[i][m] = in_act_stream_3[per_bank_cu_offset].read();
           }
         }
-        for (unsigned int m = 0; m < N; m++) {
-          unsigned row = m / COEF_PER_BEAT;
-          unsigned col = m % COEF_PER_BEAT;
+      }
+      for (unsigned int m = 0; m < N; m++) {
+        unsigned row = m / COEF_PER_BEAT;
+        unsigned col = m % COEF_PER_BEAT;
+        for (unsigned int i = 0; i < NUM_CU; i++) {
+#pragma HLS unroll
           partial_sum_buffer[i][row].data[col] =
               mod_mult(partial_sum_buffer[i][row].data[col],
                        in_act_buffer[i][row].data[col], q_0, q_0_inv);
         }
       }
+    }
 
-      // send out partial sum
-      for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+    // send out partial sum
+    for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+      for (unsigned int i = 0; i < NUM_CU; i++) {
+#pragma HLS unroll
+        unsigned int per_bank_cu_offset = i % NUM_CU_PER_BANK;
         if (i < 1 * NUM_CU_PER_BANK) {
           pre_act_stream_0[per_bank_cu_offset] << partial_sum_buffer[i][m];
         } else if (i < 2 * NUM_CU_PER_BANK) {
@@ -181,11 +181,12 @@ static void store_act(
         out_act_2[COUT_PER_BANK * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT],
     Coef_Bundle out_act_3[COUT_PER_BANK * R * NUM_CIPHERTEXT_POLY * N /
                           COEF_PER_BEAT]) {
-#pragma HLS pipeline II = 1
-  for (unsigned int i = 0; i < NUM_CU_PER_BANK; i++){
-    #pragma HLS unroll
-    unsigned int offset = i * COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT;
-    for (unsigned int j = 0; j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT - 1; j++) {
+  for (unsigned int j = 0;
+       j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT - 1; j++) {
+    for (unsigned int i = 0; i < NUM_CU_PER_BANK; i++) {
+#pragma HLS unroll
+      unsigned int offset =
+          i * COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT;
       out_act_0[offset + j] = pre_act_stream_0[i].read();
       out_act_1[offset + j] = pre_act_stream_1[i].read();
       out_act_2[offset + j] = pre_act_stream_2[i].read();
