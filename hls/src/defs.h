@@ -17,6 +17,7 @@
 #define PAD_RIGHT 0
 #define PAD_TOP 0
 #define PAD_BOTTOM 0
+#define MAX_ACT_ITRS 1
 
 // hardware config
 #define NUM_CU 32
@@ -31,7 +32,6 @@
 #define NUM_CIPHERTEXT_POLY 2
 
 #define CIPHERTEXT (N * R * NUM_CIPHERTEXT_POLY)
-#define q_0 = 18446744073709551557
 
 #define BYTES_INT16 2
 #define BYTES_INT64 8
@@ -54,5 +54,8 @@ struct Polynomial {
 struct Coef_Bundle {
   ap_uint<COEF_WIDTH> data[COEF_PER_BEAT];
 };
+
+const ap_uint<COEF_WIDTH> q_0=184467440737095;
+const ap_uint<COEF_WIDTH> q_0_inv=184467440737095;
 
 #endif  // LAYER_DEFS_H
