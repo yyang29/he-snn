@@ -203,8 +203,8 @@ void he_snn(
     ap_uint<PARAM_WIDTH> weight_indices_0[COUT_PER_BANK * MAX_ROWS],
     Coef_Bundle in_act_0[CIN_PER_BANK * K_H * K_W * R * NUM_CIPHERTEXT_POLY *
                          N / COEF_PER_BEAT],
-    ap_uint<COEF_WIDTH> tf_ntt_0[NUM_CU_PER_BANK * N],
-    ap_uint<COEF_WIDTH> tf_intt_0[NUM_CU_PER_BANK * N],
+    // ap_uint<COEF_WIDTH> tf_ntt_0[NUM_CU_PER_BANK * N],
+    // ap_uint<COEF_WIDTH> tf_intt_0[NUM_CU_PER_BANK * N],
     Coef_Bundle
         out_act_0[COUT_PER_BANK * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT],
     // memory bank 1
@@ -213,8 +213,8 @@ void he_snn(
     ap_uint<PARAM_WIDTH> weight_indices_1[COUT_PER_BANK * MAX_ROWS],
     Coef_Bundle in_act_1[CIN_PER_BANK * K_H * K_W * R * NUM_CIPHERTEXT_POLY *
                          N / COEF_PER_BEAT],
-    ap_uint<COEF_WIDTH> tf_ntt_1[NUM_CU_PER_BANK * N],
-    ap_uint<COEF_WIDTH> tf_intt_1[NUM_CU_PER_BANK * N],
+    // ap_uint<COEF_WIDTH> tf_ntt_1[NUM_CU_PER_BANK * N],
+    // ap_uint<COEF_WIDTH> tf_intt_1[NUM_CU_PER_BANK * N],
     Coef_Bundle
         out_act_1[COUT_PER_BANK * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT],
     // memory bank 2
@@ -223,8 +223,8 @@ void he_snn(
     ap_uint<PARAM_WIDTH> weight_indices_2[COUT_PER_BANK * MAX_ROWS],
     Coef_Bundle in_act_2[CIN_PER_BANK * K_H * K_W * R * NUM_CIPHERTEXT_POLY *
                          N / COEF_PER_BEAT],
-    ap_uint<COEF_WIDTH> tf_ntt_2[NUM_CU_PER_BANK * N],
-    ap_uint<COEF_WIDTH> tf_intt_2[NUM_CU_PER_BANK * N],
+    // ap_uint<COEF_WIDTH> tf_ntt_2[NUM_CU_PER_BANK * N],
+    // ap_uint<COEF_WIDTH> tf_intt_2[NUM_CU_PER_BANK * N],
     Coef_Bundle
         out_act_2[COUT_PER_BANK * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT],
     // memory bank 3
@@ -233,8 +233,8 @@ void he_snn(
     ap_uint<PARAM_WIDTH> weight_indices_3[COUT_PER_BANK * MAX_ROWS],
     Coef_Bundle in_act_3[CIN_PER_BANK * K_H * K_W * R * NUM_CIPHERTEXT_POLY *
                          N / COEF_PER_BEAT],
-    ap_uint<COEF_WIDTH> tf_ntt_3[NUM_CU_PER_BANK * N],
-    ap_uint<COEF_WIDTH> tf_intt_3[NUM_CU_PER_BANK * N],
+    // ap_uint<COEF_WIDTH> tf_ntt_3[NUM_CU_PER_BANK * N],
+    // ap_uint<COEF_WIDTH> tf_intt_3[NUM_CU_PER_BANK * N],
     Coef_Bundle out_act_3[COUT_PER_BANK * R * NUM_CIPHERTEXT_POLY * N /
                           COEF_PER_BEAT]) {
 #pragma HLS INTERFACE m_axi port = NNZ_0 bundle = gmem0
@@ -257,15 +257,15 @@ void he_snn(
 #pragma HLS INTERFACE m_axi port = in_act_2 bundle = gmem2
 #pragma HLS INTERFACE m_axi port = in_act_3 bundle = gmem3
 
-#pragma HLS INTERFACE m_axi port = tf_ntt_0 bundle = gmem0
-#pragma HLS INTERFACE m_axi port = tf_ntt_1 bundle = gmem1
-#pragma HLS INTERFACE m_axi port = tf_ntt_2 bundle = gmem2
-#pragma HLS INTERFACE m_axi port = tf_ntt_3 bundle = gmem3
+// #pragma HLS INTERFACE m_axi port = tf_ntt_0 bundle = gmem0
+// #pragma HLS INTERFACE m_axi port = tf_ntt_1 bundle = gmem1
+// #pragma HLS INTERFACE m_axi port = tf_ntt_2 bundle = gmem2
+// #pragma HLS INTERFACE m_axi port = tf_ntt_3 bundle = gmem3
 
-#pragma HLS INTERFACE m_axi port = tf_intt_0 bundle = gmem0
-#pragma HLS INTERFACE m_axi port = tf_intt_1 bundle = gmem1
-#pragma HLS INTERFACE m_axi port = tf_intt_2 bundle = gmem2
-#pragma HLS INTERFACE m_axi port = tf_intt_3 bundle = gmem3
+// #pragma HLS INTERFACE m_axi port = tf_intt_0 bundle = gmem0
+// #pragma HLS INTERFACE m_axi port = tf_intt_1 bundle = gmem1
+// #pragma HLS INTERFACE m_axi port = tf_intt_2 bundle = gmem2
+// #pragma HLS INTERFACE m_axi port = tf_intt_3 bundle = gmem3
 
 #pragma HLS INTERFACE m_axi port = out_act_0 bundle = gmem0
 #pragma HLS INTERFACE m_axi port = out_act_1 bundle = gmem1

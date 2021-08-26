@@ -52,18 +52,18 @@ int main(int argc, char **argv) {
       std::vector<Coef_Bundle, aligned_allocator<Coef_Bundle>>(
           COUT_PER_BANK * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT));
 
-  // Twiddle factor memory depends on Number of CUs
-  std::vector<
-      std::vector<ap_uint<COEF_WIDTH>, aligned_allocator<ap_uint<COEF_WIDTH>>>>
-      tf_ntt(NUM_MEM_BANKS, std::vector<ap_uint<COEF_WIDTH>,
-                                        aligned_allocator<ap_uint<COEF_WIDTH>>>(
-                                NUM_CU_PER_BANK * N));
-  std::vector<
-      std::vector<ap_uint<COEF_WIDTH>, aligned_allocator<ap_uint<COEF_WIDTH>>>>
-      tf_intt(NUM_MEM_BANKS,
-              std::vector<ap_uint<COEF_WIDTH>,
-                          aligned_allocator<ap_uint<COEF_WIDTH>>>(
-                  NUM_CU_PER_BANK * N));
+  // // Twiddle factor memory depends on Number of CUs
+  // std::vector<
+  //     std::vector<ap_uint<COEF_WIDTH>, aligned_allocator<ap_uint<COEF_WIDTH>>>>
+  //     tf_ntt(NUM_MEM_BANKS, std::vector<ap_uint<COEF_WIDTH>,
+  //                                       aligned_allocator<ap_uint<COEF_WIDTH>>>(
+  //                               NUM_CU_PER_BANK * N));
+  // std::vector<
+  //     std::vector<ap_uint<COEF_WIDTH>, aligned_allocator<ap_uint<COEF_WIDTH>>>>
+  //     tf_intt(NUM_MEM_BANKS,
+  //             std::vector<ap_uint<COEF_WIDTH>,
+  //                         aligned_allocator<ap_uint<COEF_WIDTH>>>(
+  //                 NUM_CU_PER_BANK * N));
 
   // Initialize input data
   for (int i = 0; i < NUM_MEM_BANKS; i++) {
@@ -80,8 +80,8 @@ int main(int argc, char **argv) {
         out_act[i][j].data[k] = 0;
       }
     }
-    std::generate(tf_ntt[i].begin(), tf_ntt[i].end(), std::rand);
-    std::generate(tf_intt[i].begin(), tf_intt[i].end(), std::rand);
+    // std::generate(tf_ntt[i].begin(), tf_ntt[i].end(), std::rand);
+    // std::generate(tf_intt[i].begin(), tf_intt[i].end(), std::rand);
   }
 
   // parsing weight file
@@ -138,8 +138,8 @@ int main(int argc, char **argv) {
   std::vector<cl_mem_ext_ptr_t> weight_indices_ext(NUM_MEM_BANKS);
   std::vector<cl_mem_ext_ptr_t> in_act_ext(NUM_MEM_BANKS);
   std::vector<cl_mem_ext_ptr_t> out_act_ext(NUM_MEM_BANKS);
-  std::vector<cl_mem_ext_ptr_t> tf_ntt_ext(NUM_MEM_BANKS);
-  std::vector<cl_mem_ext_ptr_t> tf_intt_ext(NUM_MEM_BANKS);
+  // std::vector<cl_mem_ext_ptr_t> tf_ntt_ext(NUM_MEM_BANKS);
+  // std::vector<cl_mem_ext_ptr_t> tf_intt_ext(NUM_MEM_BANKS);
   for (int i = 0; i < NUM_MEM_BANKS; i++) {
     if (i == 0) {
       NNZ_ext[i].flags = XCL_MEM_DDR_BANK0;
@@ -147,40 +147,40 @@ int main(int argc, char **argv) {
       weight_indices_ext[i].flags = XCL_MEM_DDR_BANK0;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK0;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK0;
-      tf_ntt_ext[i].flags = XCL_MEM_DDR_BANK0;
-      tf_intt_ext[i].flags = XCL_MEM_DDR_BANK0;
+      // tf_ntt_ext[i].flags = XCL_MEM_DDR_BANK0;
+      // tf_intt_ext[i].flags = XCL_MEM_DDR_BANK0;
     } else if (i == 1) {
       NNZ_ext[i].flags = XCL_MEM_DDR_BANK1;
       weight_values_ext[i].flags = XCL_MEM_DDR_BANK1;
       weight_indices_ext[i].flags = XCL_MEM_DDR_BANK1;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK1;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK1;
-      tf_ntt_ext[i].flags = XCL_MEM_DDR_BANK1;
-      tf_intt_ext[i].flags = XCL_MEM_DDR_BANK1;
+      // tf_ntt_ext[i].flags = XCL_MEM_DDR_BANK1;
+      // tf_intt_ext[i].flags = XCL_MEM_DDR_BANK1;
     } else if (i == 2) {
       NNZ_ext[i].flags = XCL_MEM_DDR_BANK2;
       weight_values_ext[i].flags = XCL_MEM_DDR_BANK2;
       weight_indices_ext[i].flags = XCL_MEM_DDR_BANK2;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK2;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK2;
-      tf_ntt_ext[i].flags = XCL_MEM_DDR_BANK2;
-      tf_intt_ext[i].flags = XCL_MEM_DDR_BANK2;
+      // tf_ntt_ext[i].flags = XCL_MEM_DDR_BANK2;
+      // tf_intt_ext[i].flags = XCL_MEM_DDR_BANK2;
     } else if (i == 3) {
       NNZ_ext[i].flags = XCL_MEM_DDR_BANK3;
       weight_values_ext[i].flags = XCL_MEM_DDR_BANK3;
       weight_indices_ext[i].flags = XCL_MEM_DDR_BANK3;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK3;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK3;
-      tf_ntt_ext[i].flags = XCL_MEM_DDR_BANK3;
-      tf_intt_ext[i].flags = XCL_MEM_DDR_BANK3;
+      // tf_ntt_ext[i].flags = XCL_MEM_DDR_BANK3;
+      // tf_intt_ext[i].flags = XCL_MEM_DDR_BANK3;
     }
     NNZ_ext[i].obj = NNZ[i].data();
     weight_values_ext[i].obj = weight_values[i].data();
     weight_indices_ext[i].obj = weight_indices[i].data();
     in_act_ext[i].obj = in_act[i].data();
     out_act_ext[i].obj = out_act[i].data();
-    tf_ntt_ext[i].obj = tf_ntt[i].data();
-    tf_intt_ext[i].obj = tf_intt[i].data();
+    // tf_ntt_ext[i].obj = tf_ntt[i].data();
+    // tf_intt_ext[i].obj = tf_intt[i].data();
   }
 
   // OPENCL HOST CODE AREA START
@@ -217,8 +217,8 @@ int main(int argc, char **argv) {
   std::vector<cl::Buffer> buffer_weight_indices(NUM_MEM_BANKS);
   std::vector<cl::Buffer> buffer_in_act(NUM_MEM_BANKS);
   std::vector<cl::Buffer> buffer_out_act(NUM_MEM_BANKS);
-  std::vector<cl::Buffer> buffer_tf_ntt(NUM_MEM_BANKS);
-  std::vector<cl::Buffer> buffer_tf_intt(NUM_MEM_BANKS);
+  // std::vector<cl::Buffer> buffer_tf_ntt(NUM_MEM_BANKS);
+  // std::vector<cl::Buffer> buffer_tf_intt(NUM_MEM_BANKS);
 
   for (int i = 0; i < NUM_MEM_BANKS; i++) {
     // read-only buffers
@@ -245,16 +245,16 @@ int main(int argc, char **argv) {
                  CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
                  CIN_PER_BANK * K_H * K_W * CIPHERTEXT * BYTES_INT64,
                  &in_act_ext[i], &err));
-    OCL_CHECK(
-        err, buffer_tf_ntt[i] = cl::Buffer(
-                 context,
-                 CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
-                 NUM_CU_PER_BANK * N * BYTES_INT64, &tf_ntt_ext[i], &err));
-    OCL_CHECK(
-        err, buffer_tf_intt[i] = cl::Buffer(
-                 context,
-                 CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
-                 NUM_CU_PER_BANK * N * BYTES_INT64, &tf_intt_ext[i], &err));
+    // OCL_CHECK(
+    //     err, buffer_tf_ntt[i] = cl::Buffer(
+    //              context,
+    //              CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
+    //              NUM_CU_PER_BANK * N * BYTES_INT64, &tf_ntt_ext[i], &err));
+    // OCL_CHECK(
+    //     err, buffer_tf_intt[i] = cl::Buffer(
+    //              context,
+    //              CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
+    //              NUM_CU_PER_BANK * N * BYTES_INT64, &tf_intt_ext[i], &err));
     // write-only buffers
     OCL_CHECK(err, buffer_out_act[i] =
                        cl::Buffer(context,
@@ -269,8 +269,8 @@ int main(int argc, char **argv) {
   std::vector<cl::Event> weight_values_write_event(NUM_MEM_BANKS);
   std::vector<cl::Event> weight_indices_write_event(NUM_MEM_BANKS);
   std::vector<cl::Event> in_act_write_event(NUM_MEM_BANKS);
-  std::vector<cl::Event> tf_ntt_write_event(NUM_MEM_BANKS);
-  std::vector<cl::Event> tf_intt_write_event(NUM_MEM_BANKS);
+  // std::vector<cl::Event> tf_ntt_write_event(NUM_MEM_BANKS);
+  // std::vector<cl::Event> tf_intt_write_event(NUM_MEM_BANKS);
   std::vector<cl::Event> out_act_read_event(NUM_MEM_BANKS);
   std::vector<cl::Event> waiting_events;
   cl::Event task_event;
@@ -289,12 +289,12 @@ int main(int argc, char **argv) {
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
                        {buffer_in_act[i]}, 0 /* 0 means from host*/, NULL,
                        &in_act_write_event[i]));
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
-                       {buffer_tf_ntt[i]}, 0 /* 0 means from host*/, NULL,
-                       &tf_ntt_write_event[i]));
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
-                       {buffer_tf_intt[i]}, 0 /* 0 means from host*/, NULL,
-                       &tf_intt_write_event[i]));
+    // OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
+    //                    {buffer_tf_ntt[i]}, 0 /* 0 means from host*/, NULL,
+    //                    &tf_ntt_write_event[i]));
+    // OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
+    //                    {buffer_tf_intt[i]}, 0 /* 0 means from host*/, NULL,
+    //                    &tf_intt_write_event[i]));
     waiting_events.push_back(NNZ_write_event[i]);
   }
 
@@ -307,8 +307,8 @@ int main(int argc, char **argv) {
     OCL_CHECK(err,
               err = krnl_he_snn.setArg(num_args++, buffer_weight_indices[i]));
     OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_in_act[i]));
-    OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_tf_ntt[i]));
-    OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_tf_intt[i]));
+    // OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_tf_ntt[i]));
+    // OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_tf_intt[i]));
     OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_out_act[i]));
   }
 
