@@ -37,7 +37,7 @@
 #define BYTES_INT16 2
 #define BYTES_INT64 8
 
-#define PARAM_WIDTH 16
+#define PARAM_WIDTH 64
 #define COEF_WIDTH 64
 
 const int COUT_PER_BANK = ceil((float)C_OUT / (float)NUM_MEM_BANKS);

@@ -102,26 +102,73 @@ load_act_sparse(Coef_Bundle in_act_0[CIN_PER_BANK * K_H * K_W * R *
   }
 }
 
-static void
-compute_linear(hls::stream<Coef_Bundle> in_act_stream_0[NUM_CU_PER_BANK],
-               hls::stream<Coef_Bundle> in_act_stream_1[NUM_CU_PER_BANK],
-               hls::stream<Coef_Bundle> in_act_stream_2[NUM_CU_PER_BANK],
-               hls::stream<Coef_Bundle> in_act_stream_3[NUM_CU_PER_BANK],
-               hls::stream<Coef_Bundle> pre_act_stream_0[NUM_CU_PER_BANK],
-               hls::stream<Coef_Bundle> pre_act_stream_1[NUM_CU_PER_BANK],
-               hls::stream<Coef_Bundle> pre_act_stream_2[NUM_CU_PER_BANK],
-               hls::stream<Coef_Bundle> pre_act_stream_3[NUM_CU_PER_BANK]) {
+static void compute_linear(
+    hls::stream<Coef_Bundle> in_act_stream_0[NUM_CU_PER_BANK],
+    hls::stream<Coef_Bundle> in_act_stream_1[NUM_CU_PER_BANK],
+    hls::stream<Coef_Bundle> in_act_stream_2[NUM_CU_PER_BANK],
+    hls::stream<Coef_Bundle> in_act_stream_3[NUM_CU_PER_BANK],
+    hls::stream<Coef_Bundle> pre_act_stream_0[NUM_CU_PER_BANK],
+    hls::stream<Coef_Bundle> pre_act_stream_1[NUM_CU_PER_BANK],
+    hls::stream<Coef_Bundle> pre_act_stream_2[NUM_CU_PER_BANK],
+    hls::stream<Coef_Bundle> pre_act_stream_3[NUM_CU_PER_BANK],
+    ap_uint<PARAM_WIDTH> weight_values_0[COUT_PER_BANK * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_1[COUT_PER_BANK * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_2[COUT_PER_BANK * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_3[COUT_PER_BANK * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_0[COUT_PER_BANK * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_1[COUT_PER_BANK * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_2[COUT_PER_BANK * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_3[COUT_PER_BANK * MAX_ROWS]) {
   // activation buffer
   Coef_Bundle in_act_buffer[NUM_CU][N / COEF_PER_BEAT];
 #pragma HLS array_partition variable=in_act_buffer cyclic factor=32 dim=1
-#pragma HLS bind_storage variable=in_act_buffer type=RAM_1P impl=BRAM
+#pragma HLS bind_storage variable=in_act_buffer type=RAM_S2P impl=URAM
+
   Coef_Bundle partial_sum_buffer[NUM_CU][N / COEF_PER_BEAT];
 #pragma HLS array_partition variable=partial_sum_buffer cyclic factor=32 dim=1
-#pragma HLS bind_storage variable=partial_sum_buffer type=RAM_1P impl=BRAM
+#pragma HLS bind_storage variable=partial_sum_buffer type=RAM_S2P impl=URAM
+
+  ap_uint<PARAM_WIDTH> weight_val_buffer[NUM_CU][MAX_ROWS];
+#pragma HLS array_partition variable=weight_val_buffer cyclic factor=32 dim=1
+#pragma HLS bind_storage variable=weight_val_buffer type=RAM_S2P impl=BRAM
+
+  ap_uint<PARAM_WIDTH> weight_idx_buffer[NUM_CU][MAX_ROWS];
+#pragma HLS array_partition variable=weight_idx_buffer cyclic factor=32 dim=1
+#pragma HLS bind_storage variable=weight_idx_buffer type=RAM_S2P impl=BRAM
+
+  unsigned int c_out = 0;
 
   for (unsigned int j = 0; j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY; j++) {
 
     // accumulation
+    // Load weights once every R * NUM_CIPHERTEXT_POLY iterations.
+    // TODO: Add NNZ support.
+    if (j % (R * NUM_CIPHERTEXT_POLY) == 0) {
+      for (unsigned int k = 0; k < MAX_ACT_ITRS; k++) {
+        for (unsigned int i = 0; i < NUM_CU; i++) {
+#pragma HLS unroll
+          unsigned int per_bank_cu_offset = i % NUM_CU_PER_BANK;
+          unsigned int weight_offset = c_out * NUM_CU_PER_BANK * MAX_ROWS +
+                                       per_bank_cu_offset * MAX_ROWS + k;
+          if (i < 1 * NUM_CU_PER_BANK) {
+            weight_val_buffer[i][k] = weight_values_0[weight_offset];
+            weight_idx_buffer[i][k] = weight_indices_0[weight_offset];
+          } else if (i < 1 * NUM_CU_PER_BANK) {
+            weight_val_buffer[i][k] = weight_values_1[weight_offset];
+            weight_idx_buffer[i][k] = weight_indices_1[weight_offset];
+          } else if (i < 1 * NUM_CU_PER_BANK) {
+            weight_val_buffer[i][k] = weight_values_2[weight_offset];
+            weight_idx_buffer[i][k] = weight_indices_2[weight_offset];
+          } else {
+            weight_val_buffer[i][k] = weight_values_3[weight_offset];
+            weight_idx_buffer[i][k] = weight_indices_3[weight_offset];
+          }
+        }
+      }
+      c_out++;
+    }
+
+    // Load activations
     // TODO: Change this based on sparsity
     for (unsigned int k = 0; k < MAX_ACT_ITRS; k++) {
       for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
@@ -144,9 +191,10 @@ compute_linear(hls::stream<Coef_Bundle> in_act_stream_0[NUM_CU_PER_BANK],
         unsigned col = m % COEF_PER_BEAT;
         for (unsigned int i = 0; i < NUM_CU; i++) {
 #pragma HLS unroll
-          partial_sum_buffer[i][row].data[col] =
-              mod_mult(partial_sum_buffer[i][row].data[col],
-                       in_act_buffer[i][row].data[col], q_0, q_0_inv);
+          unsigned int act_idx = weight_idx_buffer[i][k] % NUM_CU;
+          partial_sum_buffer[i][row].data[col] = partial_sum_buffer[i][row].data[col] +
+              mod_mult(weight_val_buffer[i][k],
+                       in_act_buffer[act_idx][row].data[col], q_0, q_0_inv);
         }
       }
     }
@@ -285,7 +333,10 @@ static hls::stream<Coef_Bundle, 128> pre_act_stream[NUM_MEM_BANKS]
                   in_act_stream[1], in_act_stream[2], in_act_stream[3]);
   compute_linear(in_act_stream[0], in_act_stream[1], in_act_stream[2],
                  in_act_stream[3], pre_act_stream[0], pre_act_stream[1],
-                 pre_act_stream[2], pre_act_stream[3]);
+                 pre_act_stream[2], pre_act_stream[3], weight_values_0,
+                 weight_values_1, weight_values_2, weight_values_3,
+                 weight_indices_0, weight_indices_1, weight_indices_2,
+                 weight_indices_3);
   store_act(pre_act_stream[0], pre_act_stream[1], pre_act_stream[2],
             pre_act_stream[3], out_act_0, out_act_1, out_act_2, out_act_3);
 }
