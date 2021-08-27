@@ -275,9 +275,9 @@ void he_snn(
 #pragma HLS INTERFACE m_axi port = out_act_2 bundle = gmem2
 #pragma HLS INTERFACE m_axi port = out_act_3 bundle = gmem3
 
-static hls::stream<Coef_Bundle, 1152> in_act_stream[NUM_MEM_BANKS]
+static hls::stream<Coef_Bundle, 128> in_act_stream[NUM_MEM_BANKS]
                                                    [NUM_CU_PER_BANK];
-static hls::stream<Coef_Bundle, 1152> pre_act_stream[NUM_MEM_BANKS]
+static hls::stream<Coef_Bundle, 128> pre_act_stream[NUM_MEM_BANKS]
                                                     [NUM_CU_PER_BANK];
 
 #pragma HLS dataflow
