@@ -114,8 +114,10 @@ compute_linear(hls::stream<Coef_Bundle> in_act_stream_0[NUM_CU_PER_BANK],
   // activation buffer
   Coef_Bundle in_act_buffer[NUM_CU][N / COEF_PER_BEAT];
 #pragma HLS array_partition variable=in_act_buffer cyclic factor=32 dim=1
+#pragma HLS bind_storage variable=in_act_buffer type=RAM_1P impl=BRAM
   Coef_Bundle partial_sum_buffer[NUM_CU][N / COEF_PER_BEAT];
 #pragma HLS array_partition variable=partial_sum_buffer cyclic factor=32 dim=1
+#pragma HLS bind_storage variable=partial_sum_buffer type=RAM_1P impl=BRAM
 
   for (unsigned int j = 0; j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY; j++) {
 
@@ -182,7 +184,7 @@ static void store_act(
     Coef_Bundle out_act_3[COUT_PER_BANK * R * NUM_CIPHERTEXT_POLY * N /
                           COEF_PER_BEAT]) {
   for (unsigned int j = 0;
-       j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT - 1; j++) {
+       j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
     for (unsigned int i = 0; i < NUM_CU_PER_BANK; i++) {
 #pragma HLS unroll
       unsigned int offset =
@@ -273,9 +275,10 @@ void he_snn(
 #pragma HLS INTERFACE m_axi port = out_act_2 bundle = gmem2
 #pragma HLS INTERFACE m_axi port = out_act_3 bundle = gmem3
 
-  static hls::stream<Coef_Bundle> in_act_stream[NUM_MEM_BANKS][NUM_CU_PER_BANK];
-  static hls::stream<Coef_Bundle> pre_act_stream[NUM_MEM_BANKS]
-                                                [NUM_CU_PER_BANK];
+static hls::stream<Coef_Bundle, 1152> in_act_stream[NUM_MEM_BANKS]
+                                                   [NUM_CU_PER_BANK];
+static hls::stream<Coef_Bundle, 1152> pre_act_stream[NUM_MEM_BANKS]
+                                                    [NUM_CU_PER_BANK];
 
 #pragma HLS dataflow
   load_act_sparse(in_act_0, in_act_1, in_act_2, in_act_3, in_act_stream[0],

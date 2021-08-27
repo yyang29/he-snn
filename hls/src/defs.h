@@ -9,7 +9,8 @@
 #define HW_IN 14
 #define C_IN 5
 #define HW_OUT 5
-#define C_OUT 50
+// TODO: Fix C_OUT issue when it is not a multiple of 32.
+#define C_OUT 64
 #define K_H 5
 #define K_W 5
 #define STRIDE_HW 2
