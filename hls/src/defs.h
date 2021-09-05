@@ -21,7 +21,7 @@
 #define MAX_ACT_ITRS 1
 
 // hardware config
-#define NUM_CU 32
+#define NUM_CU 16
 #define NUM_MEM_BANKS 4
 #define NUM_CU_PER_BANK (NUM_CU / NUM_MEM_BANKS)
 
