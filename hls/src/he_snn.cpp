@@ -407,40 +407,40 @@ void compute_linear(
                in_act_12, in_act_13, in_act_14, in_act_15, in_act_buffer_a,
                /*k=*/0, /*i=*/i);
 
-      // // double buffer load / compute / store
-      // for (unsigned int k = 1; k < MAX_ACT_ITRS; k++) {
-      //   if (k % 2 == 1) {
-      //     load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04,
-      //              in_act_05, in_act_06, in_act_07, in_act_08, in_act_09,
-      //              in_act_10, in_act_11, in_act_12, in_act_13, in_act_14,
-      //              in_act_15, in_act_buffer_b,
-      //              /*k=*/k, /*i=*/i);
+      // double buffer load / compute / store
+      for (unsigned int k = 1; k < MAX_ACT_ITRS; k++) {
+        if (k % 2 == 1) {
+          load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04,
+                   in_act_05, in_act_06, in_act_07, in_act_08, in_act_09,
+                   in_act_10, in_act_11, in_act_12, in_act_13, in_act_14,
+                   in_act_15, in_act_buffer_b,
+                   /*k=*/k, /*i=*/i);
 
-      //     if (j % 2 == 0) {
-      //       comp(in_act_buffer_a, partial_sum_buffer_a, weight_val_buffer,
-      //           weight_idx_buffer, k - 1);
-      //     } else {
-      //       comp(in_act_buffer_a, partial_sum_buffer_b, weight_val_buffer,
-      //           weight_idx_buffer, k - 1);
-      //     }
+          if (j % 2 == 0) {
+            comp(in_act_buffer_a, partial_sum_buffer_a, weight_val_buffer,
+                weight_idx_buffer, k - 1);
+          } else {
+            comp(in_act_buffer_a, partial_sum_buffer_b, weight_val_buffer,
+                weight_idx_buffer, k - 1);
+          }
 
-      //   } else {
-      //     load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04,
-      //              in_act_05, in_act_06, in_act_07, in_act_08, in_act_09,
-      //              in_act_10, in_act_11, in_act_12, in_act_13, in_act_14,
-      //              in_act_15, in_act_buffer_a,
-      //              /*k=*/k, /*i=*/i);
+        } else {
+          load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04,
+                   in_act_05, in_act_06, in_act_07, in_act_08, in_act_09,
+                   in_act_10, in_act_11, in_act_12, in_act_13, in_act_14,
+                   in_act_15, in_act_buffer_a,
+                   /*k=*/k, /*i=*/i);
 
-      //     if (j % 2 == 0) {
-      //       comp(in_act_buffer_b, partial_sum_buffer_a, weight_val_buffer,
-      //           weight_idx_buffer, k - 1);
-      //     } else {
-      //       comp(in_act_buffer_b, partial_sum_buffer_b, weight_val_buffer,
-      //           weight_idx_buffer, k - 1);
-      //     }
+          if (j % 2 == 0) {
+            comp(in_act_buffer_b, partial_sum_buffer_a, weight_val_buffer,
+                weight_idx_buffer, k - 1);
+          } else {
+            comp(in_act_buffer_b, partial_sum_buffer_b, weight_val_buffer,
+                weight_idx_buffer, k - 1);
+          }
 
-      //   }
-      // }
+        }
+      }
 
       // Epilogue: finish the compute of the last compute iteration.
       if (MAX_ACT_ITRS % 2 == 1) {
