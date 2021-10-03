@@ -35,6 +35,7 @@ void pe_proc(
 #pragma HLS unroll
       out_bundle.data[i] += mod_mult(weight_val, in_bundle.data[i], q_0, q_0_inv);
     }
+    poly_out_act[m] = out_bundle;
   }
 }
 
@@ -182,12 +183,11 @@ void load_act(
                           COEF_PER_BEAT],
     Coef_Bundle act_buffer[NUM_CU][N / COEF_PER_BEAT],
     unsigned int k, unsigned int j) {
-#pragma HLS array_partition variable=act_buffer cyclic factor=16 dim=1
-#pragma HLS bind_storage variable=act_buffer type=RAM_S2P impl=URAM
   // load one polynomial from act iteration k, RNS term j
   // TODO: Add a flag to skip load activation if all the weights across
   // the cout channels are 0.
   for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+#pragma HLS pipeline II=4
     unsigned int polynomial_offset =
         k * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT +
         j * N / COEF_PER_BEAT + m;
@@ -245,6 +245,22 @@ void compute_linear(
                           COEF_PER_BEAT],
     Coef_Bundle in_act_15[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
                           COEF_PER_BEAT],
+    // hls::stream<Coef_Bundle> &in_stream_00,
+    // hls::stream<Coef_Bundle> &in_stream_01,
+    // hls::stream<Coef_Bundle> &in_stream_02,
+    // hls::stream<Coef_Bundle> &in_stream_03,
+    // hls::stream<Coef_Bundle> &in_stream_04,
+    // hls::stream<Coef_Bundle> &in_stream_05,
+    // hls::stream<Coef_Bundle> &in_stream_06,
+    // hls::stream<Coef_Bundle> &in_stream_07,
+    // hls::stream<Coef_Bundle> &in_stream_08,
+    // hls::stream<Coef_Bundle> &in_stream_09,
+    // hls::stream<Coef_Bundle> &in_stream_10,
+    // hls::stream<Coef_Bundle> &in_stream_11,
+    // hls::stream<Coef_Bundle> &in_stream_12,
+    // hls::stream<Coef_Bundle> &in_stream_13,
+    // hls::stream<Coef_Bundle> &in_stream_14,
+    // hls::stream<Coef_Bundle> &in_stream_15,
     // pre_act stream
     hls::stream<Coef_Bundle> &pre_act_stream_00,
     hls::stream<Coef_Bundle> &pre_act_stream_01,
@@ -301,28 +317,28 @@ void compute_linear(
   // double activation buffer to store 1 polynomial each
   Coef_Bundle in_act_buffer_a[NUM_CU][N / COEF_PER_BEAT];
 #pragma HLS array_partition variable=in_act_buffer_a cyclic factor=16 dim=1
-#pragma HLS bind_storage variable=in_act_buffer_a type=RAM_S2P impl=URAM
+#pragma HLS bind_storage variable=in_act_buffer_a type=RAM_2P impl=URAM
   Coef_Bundle in_act_buffer_b[NUM_CU][N / COEF_PER_BEAT];
 #pragma HLS array_partition variable=in_act_buffer_b cyclic factor=16 dim=1
-#pragma HLS bind_storage variable=in_act_buffer_b type=RAM_S2P impl=URAM
+#pragma HLS bind_storage variable=in_act_buffer_b type=RAM_2P impl=URAM
 
   // double partial sum buffer to store 1 polynomial each
   Coef_Bundle partial_sum_buffer_a[NUM_CU][N / COEF_PER_BEAT];
 #pragma HLS array_partition variable=partial_sum_buffer_a cyclic factor=16 dim=1
-#pragma HLS bind_storage variable=partial_sum_buffer_a type=RAM_S2P impl=URAM
+#pragma HLS bind_storage variable=partial_sum_buffer_a type=RAM_2P impl=URAM
   Coef_Bundle partial_sum_buffer_b[NUM_CU][N / COEF_PER_BEAT];
 #pragma HLS array_partition variable=partial_sum_buffer_b cyclic factor=16 dim=1
-#pragma HLS bind_storage variable=partial_sum_buffer_b type=RAM_S2P impl=URAM
+#pragma HLS bind_storage variable=partial_sum_buffer_b type=RAM_2P impl=URAM
 
   // weight buffer to store the entire weights for a layer
   static ap_uint<PARAM_WIDTH> weight_val_buffer[NUM_CU][MAX_COUT_PER_CU * MAX_ROWS];
 #pragma HLS array_partition variable=weight_val_buffer cyclic factor=16 dim=1
-#pragma HLS bind_storage variable=weight_val_buffer type=RAM_S2P impl=BRAM
+#pragma HLS bind_storage variable=weight_val_buffer type=RAM_2P impl=BRAM
 
 	// weight indices buffer to store the entire indices for a layer
   static ap_uint<PARAM_WIDTH> weight_idx_buffer[NUM_CU][MAX_COUT_PER_CU * MAX_ROWS];
 #pragma HLS array_partition variable=weight_idx_buffer cyclic factor=16 dim=1
-#pragma HLS bind_storage variable=weight_idx_buffer type=RAM_S2P impl=BRAM
+#pragma HLS bind_storage variable=weight_idx_buffer type=RAM_2P impl=BRAM
 
   if (reset) {
     // preload all the weights and the indices once for the layer
@@ -390,40 +406,40 @@ void compute_linear(
                in_act_12, in_act_13, in_act_14, in_act_15, in_act_buffer_a,
                /*k=*/0, /*i=*/i);
 
-      // double buffer load / compute / store
-      for (unsigned int k = 1; k < MAX_ACT_ITRS; k++) {
-        if (k % 2 == 1) {
-          load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04,
-                   in_act_05, in_act_06, in_act_07, in_act_08, in_act_09,
-                   in_act_10, in_act_11, in_act_12, in_act_13, in_act_14,
-                   in_act_15, in_act_buffer_b,
-                   /*k=*/k, /*i=*/i);
+      // // double buffer load / compute / store
+      // for (unsigned int k = 1; k < MAX_ACT_ITRS; k++) {
+      //   if (k % 2 == 1) {
+      //     load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04,
+      //              in_act_05, in_act_06, in_act_07, in_act_08, in_act_09,
+      //              in_act_10, in_act_11, in_act_12, in_act_13, in_act_14,
+      //              in_act_15, in_act_buffer_b,
+      //              /*k=*/k, /*i=*/i);
 
-          if (j % 2 == 0) {
-            comp(in_act_buffer_a, partial_sum_buffer_a, weight_val_buffer,
-                weight_idx_buffer, k - 1);
-          } else {
-            comp(in_act_buffer_a, partial_sum_buffer_b, weight_val_buffer,
-                weight_idx_buffer, k - 1);
-          }
+      //     if (j % 2 == 0) {
+      //       comp(in_act_buffer_a, partial_sum_buffer_a, weight_val_buffer,
+      //           weight_idx_buffer, k - 1);
+      //     } else {
+      //       comp(in_act_buffer_a, partial_sum_buffer_b, weight_val_buffer,
+      //           weight_idx_buffer, k - 1);
+      //     }
 
-        } else {
-          load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04,
-                   in_act_05, in_act_06, in_act_07, in_act_08, in_act_09,
-                   in_act_10, in_act_11, in_act_12, in_act_13, in_act_14,
-                   in_act_15, in_act_buffer_a,
-                   /*k=*/k, /*i=*/i);
+      //   } else {
+      //     load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04,
+      //              in_act_05, in_act_06, in_act_07, in_act_08, in_act_09,
+      //              in_act_10, in_act_11, in_act_12, in_act_13, in_act_14,
+      //              in_act_15, in_act_buffer_a,
+      //              /*k=*/k, /*i=*/i);
 
-          if (j % 2 == 0) {
-            comp(in_act_buffer_b, partial_sum_buffer_a, weight_val_buffer,
-                weight_idx_buffer, k - 1);
-          } else {
-            comp(in_act_buffer_b, partial_sum_buffer_b, weight_val_buffer,
-                weight_idx_buffer, k - 1);
-          }
+      //     if (j % 2 == 0) {
+      //       comp(in_act_buffer_b, partial_sum_buffer_a, weight_val_buffer,
+      //           weight_idx_buffer, k - 1);
+      //     } else {
+      //       comp(in_act_buffer_b, partial_sum_buffer_b, weight_val_buffer,
+      //           weight_idx_buffer, k - 1);
+      //     }
 
-        }
-      }
+      //   }
+      // }
 
       // Epilogue: finish the compute of the last compute iteration.
       if (MAX_ACT_ITRS % 2 == 1) {
@@ -462,25 +478,27 @@ void compute_linear(
     }
   }
 
-  // for (unsigned int j = 0;
-  //      j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
-  //   pre_act_stream_00 << in_act_00[j % COUT_PER_CU];
-  //   pre_act_stream_01 << in_act_01[j % COUT_PER_CU];
-  //   pre_act_stream_02 << in_act_02[j % COUT_PER_CU];
-  //   pre_act_stream_03 << in_act_03[j % COUT_PER_CU];
-  //   pre_act_stream_04 << in_act_04[j % COUT_PER_CU];
-  //   pre_act_stream_05 << in_act_05[j % COUT_PER_CU];
-  //   pre_act_stream_06 << in_act_06[j % COUT_PER_CU];
-  //   pre_act_stream_07 << in_act_07[j % COUT_PER_CU];
-  //   pre_act_stream_08 << in_act_08[j % COUT_PER_CU];
-  //   pre_act_stream_09 << in_act_09[j % COUT_PER_CU];
-  //   pre_act_stream_10 << in_act_10[j % COUT_PER_CU];
-  //   pre_act_stream_11 << in_act_11[j % COUT_PER_CU];
-  //   pre_act_stream_12 << in_act_12[j % COUT_PER_CU];
-  //   pre_act_stream_13 << in_act_13[j % COUT_PER_CU];
-  //   pre_act_stream_14 << in_act_14[j % COUT_PER_CU];
-  //   pre_act_stream_15 << in_act_15[j % COUT_PER_CU];
-  // }
+//   // testing
+//   testing_loop: for (unsigned int j = 0;
+//        j < N / COEF_PER_BEAT; j++) {
+// #pragma HLS pipeline II=2
+//     pre_act_stream_00 << in_act_buffer_a[0][j];
+//     pre_act_stream_01 << in_act_buffer_a[1][j];
+//     pre_act_stream_02 << in_act_buffer_a[2][j];
+//     pre_act_stream_03 << in_act_buffer_a[3][j];
+//     pre_act_stream_04 << in_act_buffer_a[4][j];
+//     pre_act_stream_05 << in_act_buffer_a[5][j];
+//     pre_act_stream_06 << in_act_buffer_a[6][j];
+//     pre_act_stream_07 << in_act_buffer_a[7][j];
+//     pre_act_stream_08 << in_act_buffer_a[8][j];
+//     pre_act_stream_09 << in_act_buffer_a[9][j];
+//     pre_act_stream_10 << in_act_buffer_a[10][j];
+//     pre_act_stream_11 << in_act_buffer_a[11][j];
+//     pre_act_stream_12 << in_act_buffer_a[12][j];
+//     pre_act_stream_13 << in_act_buffer_a[13][j];
+//     pre_act_stream_14 << in_act_buffer_a[14][j];
+//     pre_act_stream_15 << in_act_buffer_a[15][j];
+//   }
 }
 
 static void store_act(
@@ -554,6 +572,83 @@ static void store_act(
     out_act_15[j] = pre_act_stream_15.read();
   }
 }
+
+// void
+// load_act_sparse(Coef_Bundle in_act_00[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_01[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_02[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_03[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_04[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_05[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_06[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_07[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_08[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_09[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_10[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_11[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_12[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_13[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_14[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     Coef_Bundle in_act_15[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+//                           COEF_PER_BEAT],
+//     hls::stream<Coef_Bundle> &in_stream_00,
+//     hls::stream<Coef_Bundle> &in_stream_01,
+//     hls::stream<Coef_Bundle> &in_stream_02,
+//     hls::stream<Coef_Bundle> &in_stream_03,
+//     hls::stream<Coef_Bundle> &in_stream_04,
+//     hls::stream<Coef_Bundle> &in_stream_05,
+//     hls::stream<Coef_Bundle> &in_stream_06,
+//     hls::stream<Coef_Bundle> &in_stream_07,
+//     hls::stream<Coef_Bundle> &in_stream_08,
+//     hls::stream<Coef_Bundle> &in_stream_09,
+//     hls::stream<Coef_Bundle> &in_stream_10,
+//     hls::stream<Coef_Bundle> &in_stream_11,
+//     hls::stream<Coef_Bundle> &in_stream_12,
+//     hls::stream<Coef_Bundle> &in_stream_13,
+//     hls::stream<Coef_Bundle> &in_stream_14,
+//     hls::stream<Coef_Bundle> &in_stream_15) {
+//   // TODO: Polynomials are organized in the following order:
+//   // R * NUM_CIPHERTEXT_POLY * CIN_PER_BANK * K_H * K_W
+//   // Each activation is loaded COUT_PER_CU times.
+//   for (unsigned int n = 0; n < COUT_PER_CU; n++) {
+//     for (unsigned int k = 0; k < R * NUM_CIPHERTEXT_POLY * MAX_ACT_ITRS; k++) {
+//       for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+//         unsigned int polynomial_offset = N / COEF_PER_BEAT + m;
+//         in_stream_00 << in_act_00[polynomial_offset];
+//         in_stream_01 << in_act_01[polynomial_offset];
+//         in_stream_02 << in_act_02[polynomial_offset];
+//         in_stream_03 << in_act_03[polynomial_offset];
+//         in_stream_04 << in_act_04[polynomial_offset];
+//         in_stream_05 << in_act_05[polynomial_offset];
+//         in_stream_06 << in_act_06[polynomial_offset];
+//         in_stream_07 << in_act_07[polynomial_offset];
+//         in_stream_08 << in_act_08[polynomial_offset];
+//         in_stream_09 << in_act_09[polynomial_offset];
+//         in_stream_10 << in_act_10[polynomial_offset];
+//         in_stream_11 << in_act_11[polynomial_offset];
+//         in_stream_12 << in_act_12[polynomial_offset];
+//         in_stream_13 << in_act_13[polynomial_offset];
+//         in_stream_14 << in_act_14[polynomial_offset];
+//         in_stream_15 << in_act_15[polynomial_offset];
+//       }
+//     }
+//   }
+// }
 
 extern "C" {
 
@@ -760,6 +855,23 @@ void he_snn(
 #pragma HLS INTERFACE m_axi port = out_act_14 bundle = g_out_act_14
 #pragma HLS INTERFACE m_axi port = out_act_15 bundle = g_out_act_15
 
+  static hls::stream<Coef_Bundle, 32> in_stream_00;
+  static hls::stream<Coef_Bundle, 32> in_stream_01;
+  static hls::stream<Coef_Bundle, 32> in_stream_02;
+  static hls::stream<Coef_Bundle, 32> in_stream_03;
+  static hls::stream<Coef_Bundle, 32> in_stream_04;
+  static hls::stream<Coef_Bundle, 32> in_stream_05;
+  static hls::stream<Coef_Bundle, 32> in_stream_06;
+  static hls::stream<Coef_Bundle, 32> in_stream_07;
+  static hls::stream<Coef_Bundle, 32> in_stream_08;
+  static hls::stream<Coef_Bundle, 32> in_stream_09;
+  static hls::stream<Coef_Bundle, 32> in_stream_10;
+  static hls::stream<Coef_Bundle, 32> in_stream_11;
+  static hls::stream<Coef_Bundle, 32> in_stream_12;
+  static hls::stream<Coef_Bundle, 32> in_stream_13;
+  static hls::stream<Coef_Bundle, 32> in_stream_14;
+  static hls::stream<Coef_Bundle, 32> in_stream_15;
+
   static hls::stream<Coef_Bundle, 32> pre_act_stream_00;
   static hls::stream<Coef_Bundle, 32> pre_act_stream_01;
   static hls::stream<Coef_Bundle, 32> pre_act_stream_02;
@@ -778,6 +890,13 @@ void he_snn(
   static hls::stream<Coef_Bundle, 32> pre_act_stream_15;
 
 #pragma HLS dataflow
+  // load_act_sparse(
+  //     in_act_00, in_act_01, in_act_02, in_act_03, in_act_04, in_act_05,
+  //     in_act_06, in_act_07, in_act_08, in_act_09, in_act_10, in_act_11,
+  //     in_act_12, in_act_13, in_act_14, in_act_15, in_stream_00, in_stream_01,
+  //     in_stream_02, in_stream_03, in_stream_04, in_stream_05, in_stream_06,
+  //     in_stream_07, in_stream_08, in_stream_09, in_stream_10, in_stream_11,
+  //     in_stream_12, in_stream_13, in_stream_14, in_stream_15);
   compute_linear(
       in_act_00, in_act_01, in_act_02, in_act_03, in_act_04, in_act_05,
       in_act_06, in_act_07, in_act_08, in_act_09, in_act_10, in_act_11,
