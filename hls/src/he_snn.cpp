@@ -13,7 +13,7 @@ ap_uint<COEF_WIDTH> mod_mult(ap_uint<COEF_WIDTH> x, ap_uint<COEF_WIDTH> y,
   ap_uint<2 * COEF_WIDTH> t;
 
   z = x * y;
-  t = z << COEF_WIDTH;
+  t = z >> COEF_WIDTH;
   t = (t * q_inv) >> COEF_WIDTH;
   t = t * q;
   out = z - t;
@@ -28,6 +28,7 @@ void pe_proc(
   Coef_Bundle poly_in_act[N / COEF_PER_BEAT],
   Coef_Bundle poly_out_act[N / COEF_PER_BEAT],
   ap_uint<PARAM_WIDTH> weight_val) {
+#pragma hls inline off
   for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
     Coef_Bundle in_bundle = poly_in_act[m];
     Coef_Bundle out_bundle = poly_out_act[m];
