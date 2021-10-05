@@ -20,9 +20,9 @@ int main(int argc, char **argv) {
   // sparsity map
   std::vector<std::vector<ap_uint<PARAM_WIDTH>,
                           aligned_allocator<ap_uint<PARAM_WIDTH>>>>
-      NNZ(NUM_CU,
-          std::vector<ap_uint<PARAM_WIDTH>,
-                      aligned_allocator<ap_uint<PARAM_WIDTH>>>(COUT_PER_CU, 0));
+      NNZ(NUM_CU, std::vector<ap_uint<PARAM_WIDTH>,
+                              aligned_allocator<ap_uint<PARAM_WIDTH>>>(
+                      MAX_ACT_ITRS, 0));
 
   // weight values
   std::vector<std::vector<ap_uint<PARAM_WIDTH>,
@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
       weight_values(NUM_CU,
                     std::vector<ap_uint<PARAM_WIDTH>,
                                 aligned_allocator<ap_uint<PARAM_WIDTH>>>(
-                        COUT_PER_CU * MAX_ROWS, 0));
+                        OFF_CHIP_W_MAX_ROWS, 0));
 
   // weight indices
   std::vector<std::vector<ap_uint<PARAM_WIDTH>,
@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
       weight_indices(NUM_CU,
                      std::vector<ap_uint<PARAM_WIDTH>,
                                  aligned_allocator<ap_uint<PARAM_WIDTH>>>(
-                         COUT_PER_CU * MAX_ROWS, 0));
+                         OFF_CHIP_W_MAX_ROWS, 0));
 
   // input activations
   std::vector<std::vector<Coef_Bundle, aligned_allocator<Coef_Bundle>>> in_act(
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
 
   // parsing weight file
   std::fstream ifs;
-  ifs.open(filename);
+  ifs.open(filename + "_itr_bp.txt");
   int row_id = 0;
   while (true) {
     std::string line;
@@ -88,33 +88,78 @@ int main(int argc, char **argv) {
     while (ss >> buf)
       row.push_back(buf);
 
+    unsigned int num = static_cast<unsigned int>(row[0]);
+    for (unsigned int i = 0; i < NUM_CU; i++) {
+      NNZ[i][row_id] = num;
+    }
+  
+    row_id++;
+  }
+  ifs.close();
+
+  ifs.open(filename + "_wv_bp.txt");
+  row_id = 0;
+  while (true) {
+    std::string line;
+    double buf;
+    getline(ifs, line);
+    std::stringstream ss(line, std::ios_base::out | std::ios_base::in |
+                                   std::ios_base::binary);
+
+    if (!ifs)
+      break;
+    if (line[0] == '#' || line.empty())
+      continue;
+
+    std::vector<double> row;
+    while (ss >> buf)
+      row.push_back(buf);
+
     for (unsigned int i = 0; i < row.size(); i++) {
-      int quantized = static_cast<int>((row[i] + 1) / 2 * 255);
-      if (quantized != 127) {
-        int c_out_id = i % NUM_CU;
-        int c_out_offset = i / NUM_CU;
-        int current_nnz = NNZ[c_out_id][c_out_offset];
-        weight_values[c_out_id][c_out_offset * MAX_ROWS + current_nnz] =
-            quantized;
-        weight_indices[c_out_id][c_out_offset * MAX_ROWS + current_nnz] =
-            row_id;
-        NNZ[c_out_id][c_out_offset]++;
-      }
+      weight_values[i][row_id] = static_cast<unsigned int>(row[i]);
     }
     row_id++;
   }
+  ifs.close();
 
-  /*
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
-    for (int j = 0; j < COUT_PER_BANK; j++) {
-      std::cout << "NNZs " << NNZ[i][j] << std::endl;
-      for (int k = 0; k < MAX_ROWS; k++) {
-        std::cout << weight_indices[i][j * MAX_ROWS + k] << " ";
-      }
-      std::cout << std::endl;
+  ifs.open(filename + "_wi_bp.txt");
+  row_id = 0;
+  while (true) {
+    std::string line;
+    double buf;
+    getline(ifs, line);
+    std::stringstream ss(line, std::ios_base::out | std::ios_base::in |
+                                   std::ios_base::binary);
+
+    if (!ifs)
+      break;
+    if (line[0] == '#' || line.empty())
+      continue;
+
+    std::vector<double> row;
+    while (ss >> buf)
+      row.push_back(buf);
+
+    for (unsigned int i = 0; i < row.size(); i++) {
+      weight_indices[i][row_id] = static_cast<unsigned int>(row[i]);
     }
+    row_id++;
   }
-  */
+  ifs.close();
+
+  // for (int i = 0; i < OFF_CHIP_W_MAX_ROWS; i++) {
+  //   for (int j = 0; j < NUM_CU; j++) {
+  //     std::cout << weight_values[j][i] << " ";
+  //   }
+  //   std::cout << std::endl;
+  // }
+
+  // for (int i = 0; i < OFF_CHIP_W_MAX_ROWS; i++) {
+  //   for (int j = 0; j < NUM_CU; j++) {
+  //     std::cout << weight_indices[j][i] << " ";
+  //   }
+  //   std::cout << std::endl;
+  // }
 
   // device pointers
   std::vector<cl_mem_ext_ptr_t> NNZ_ext(NUM_CU);
@@ -196,18 +241,18 @@ int main(int argc, char **argv) {
         err, buffer_NNZ[i] = cl::Buffer(
                  context,
                  CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
-                 COUT_PER_CU * BYTES_INT16, &NNZ_ext[i], &err));
+                 MAX_ACT_ITRS * BYTES_INT64, &NNZ_ext[i], &err));
     OCL_CHECK(err, buffer_weight_values[i] =
                        cl::Buffer(context,
                                   CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY |
                                       CL_MEM_EXT_PTR_XILINX,
-                                  COUT_PER_CU * MAX_ROWS * BYTES_INT16,
+                                  OFF_CHIP_W_MAX_ROWS * BYTES_INT64,
                                   &weight_values_ext[i], &err));
     OCL_CHECK(err, buffer_weight_indices[i] =
                        cl::Buffer(context,
                                   CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY |
                                       CL_MEM_EXT_PTR_XILINX,
-                                  COUT_PER_CU * MAX_ROWS * BYTES_INT16,
+                                  OFF_CHIP_W_MAX_ROWS * BYTES_INT64,
                                   &weight_indices_ext[i], &err));
     OCL_CHECK(
         err, buffer_in_act[i] = cl::Buffer(
@@ -253,11 +298,19 @@ int main(int argc, char **argv) {
   int num_args = 0;
   for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_NNZ[i]));
+  }
+  for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err,
               err = krnl_he_snn.setArg(num_args++, buffer_weight_values[i]));
+  }
+  for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err,
               err = krnl_he_snn.setArg(num_args++, buffer_weight_indices[i]));
+  }
+  for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_in_act[i]));
+  }
+  for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_out_act[i]));
   }
 
@@ -283,16 +336,16 @@ int main(int argc, char **argv) {
 
   // Compare the results of the Device to the simulation
   unsigned int mismatch_count = 0;
-  for (int i = 0; i < NUM_CU; i++) {
-    for (int j = 0;
-         j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
-      for (int k = 0; k < COEF_PER_BEAT; k++) {
-        if (out_act[i][j].data[k] != in_act[i][j].data[k]) {
-          mismatch_count++;
-        }
-      }
-    }
-  }
+  // for (int i = 0; i < NUM_CU; i++) {
+  //   for (int j = 0;
+  //        j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
+  //     for (int k = 0; k < COEF_PER_BEAT; k++) {
+  //       if (out_act[i][j].data[k] != in_act[i][j].data[k]) {
+  //         mismatch_count++;
+  //       }
+  //     }
+  //   }
+  // }
 
   std::cout << "mismatch count: " << mismatch_count << std::endl;
   return 0;

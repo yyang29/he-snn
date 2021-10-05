@@ -51,7 +51,7 @@ BUILD_DIR := ./build_dir.$(TARGET).$(XSA)
 
 CXX := g++
 VPP := v++
-CMD_ARGS = $(BUILD_DIR)/he_snn.xclbin ../workloads/mnist/conv1.txt
+CMD_ARGS = $(BUILD_DIR)/he_snn.xclbin ../workloads/cifar10/conv2
 
 CXXFLAGS += -I$(XILINX_XRT)/include/ -I$(XILINX_HLS)/include/ -Wall -O3 -g -std=c++11
 LDFLAGS += -L$(XILINX_XRT)/lib/ -lpthread -lOpenCL

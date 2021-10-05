@@ -43,70 +43,20 @@ void pe_proc(
 void comp(
     Coef_Bundle act_buffer[NUM_CU][N / COEF_PER_BEAT],
     Coef_Bundle partial_sum_buffer[NUM_CU][N / COEF_PER_BEAT],
-    ap_uint<PARAM_WIDTH> weight_val_buffer[NUM_CU][MAX_COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_idx_buffer[NUM_CU][MAX_COUT_PER_CU * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_val_buffer[NUM_CU][ON_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_idx_buffer[NUM_CU][ON_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> in_itr_count[MAX_ACT_ITRS],
     unsigned k) {
-  static ap_uint<8> current_ptr[NUM_CU];
-#pragma HLS ARRAY_PARTITION variable=current_ptr dim=0 complete
 
-  if (k == 0) {
-    // reset arbitration
-    for (unsigned int i = 0; i < NUM_CU; i++) {
+  for (unsigned int i = 0; i < in_itr_count[k]; i++) {
+    for (unsigned int j = 0; j < NUM_CU; j++) {
 #pragma HLS unroll
-      current_ptr[i] = 0;
+      unsigned int bank_id = weight_idx_buffer[j][k + i];
+      pe_proc(act_buffer[bank_id], partial_sum_buffer[j],
+              weight_val_buffer[j][k + i]);
     }
   }
 
-  unsigned int in_start = k * NUM_CU;
-  unsigned int in_end = (k + 1) * NUM_CU;
-
-  bool bank_busy[NUM_CU];
-#pragma HLS ARRAY_PARTITION variable=bank_busy dim=0 complete
-
-  bool pe_busy[NUM_CU];
-#pragma HLS ARRAY_PARTITION variable=pe_busy dim=0 complete
-
-  int8_t assigned_pe_bank[NUM_CU];
-#pragma HLS ARRAY_PARTITION variable=assigned_pe_bank dim=0 complete
-
-  bool done = false;
-
-  while (!done) {
-    // arbitration
-    for (unsigned int i = 0; i < NUM_CU; i++) {
-#pragma HLS pipeline II=1 
-      bank_busy[i] = false;
-      pe_busy[i] = false;
-      assigned_pe_bank[i] = -1;
-
-      ap_uint<8> bank_id = weight_idx_buffer[i][current_ptr[i]] % NUM_CU;
-      if (bank_busy[bank_id] == false && current_ptr[i] < in_end) {
-        assigned_pe_bank[i] = bank_id;
-        bank_busy[bank_id] = true;
-        pe_busy[i] = true;
-      }
-    }
-
-    // computation
-    for (unsigned int i = 0; i < NUM_CU; i++) {
-#pragma HLS unroll factor=16
-#pragma HLS dependence variable=act_buffer inter false
-      if (pe_busy[i]) {
-        pe_proc(act_buffer[assigned_pe_bank[i]], partial_sum_buffer[i],
-           weight_val_buffer[i][current_ptr[i]]);
-      }
-    }
-
-    // check_done
-    done = true;
-    for (unsigned int i = 0; i < NUM_CU; i++) {
-#pragma HLS pipeline II=1 
-      if (pe_busy[i]) current_ptr[i]++;
-      if (current_ptr[i] < in_end) {
-        done = false;
-      }
-    }
-  }
 }
 
 void write_result(
@@ -183,15 +133,13 @@ void load_act(
     Coef_Bundle in_act_15[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
                           COEF_PER_BEAT],
     Coef_Bundle act_buffer[NUM_CU][N / COEF_PER_BEAT],
-    unsigned int k, unsigned int j) {
-  // load one polynomial from act iteration k, RNS term j
-  // TODO: Add a flag to skip load activation if all the weights across
-  // the cout channels are 0.
-  for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
-#pragma HLS pipeline II=4
-    unsigned int polynomial_offset =
-        k * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT +
-        j * N / COEF_PER_BEAT + m;
+    unsigned int k, unsigned int rns) {
+  // load one polynomial from act iteration k, RNS term rns
+  unsigned int base_offset = k * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT +
+    rns * N / COEF_PER_BEAT;
+  load_act_loop: for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+#pragma HLS pipeline II=1
+    unsigned int polynomial_offset = base_offset + m;
     act_buffer[0][m] = in_act_00[polynomial_offset];
     act_buffer[1][m] = in_act_01[polynomial_offset];
     act_buffer[2][m] = in_act_02[polynomial_offset];
@@ -280,39 +228,56 @@ void compute_linear(
     hls::stream<Coef_Bundle> &pre_act_stream_14,
     hls::stream<Coef_Bundle> &pre_act_stream_15,
     // Weight values
-    ap_uint<PARAM_WIDTH> weight_values_00[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_01[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_02[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_03[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_04[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_05[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_06[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_07[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_08[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_09[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_10[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_11[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_12[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_13[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_14[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_15[COUT_PER_CU * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> NNZ_00[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_01[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_02[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_03[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_04[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_05[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_06[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_07[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_08[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_09[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_10[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_11[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_12[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_13[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_14[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_15[MAX_ACT_ITRS],
+    // Weight values
+    ap_uint<PARAM_WIDTH> weight_values_00[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_01[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_02[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_03[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_04[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_05[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_06[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_07[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_08[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_09[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_10[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_11[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_12[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_13[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_14[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_15[OFF_CHIP_W_MAX_ROWS],
     // Weight indices
-    ap_uint<PARAM_WIDTH> weight_indices_00[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_01[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_02[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_03[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_04[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_05[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_06[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_07[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_08[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_09[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_10[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_11[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_12[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_13[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_14[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_15[COUT_PER_CU * MAX_ROWS]) {
+    ap_uint<PARAM_WIDTH> weight_indices_00[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_01[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_02[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_03[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_04[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_05[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_06[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_07[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_08[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_09[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_10[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_11[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_12[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_13[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_14[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_15[OFF_CHIP_W_MAX_ROWS]) {
 
   static bool reset = true;
   // double activation buffer to store 1 polynomial each
@@ -332,75 +297,83 @@ void compute_linear(
 #pragma HLS bind_storage variable=partial_sum_buffer_b type=RAM_2P impl=URAM
 
   // weight buffer to store the entire weights for a layer
-  static ap_uint<PARAM_WIDTH> weight_val_buffer[NUM_CU][MAX_COUT_PER_CU * MAX_ROWS];
+  static ap_uint<PARAM_WIDTH> weight_val_buffer[NUM_CU][ON_CHIP_W_MAX_ROWS];
 #pragma HLS array_partition variable=weight_val_buffer cyclic factor=16 dim=1
-#pragma HLS bind_storage variable=weight_val_buffer type=RAM_2P impl=BRAM
+#pragma HLS bind_storage variable=weight_val_buffer type=RAM_2P impl=URAM
 
 	// weight indices buffer to store the entire indices for a layer
-  static ap_uint<PARAM_WIDTH> weight_idx_buffer[NUM_CU][MAX_COUT_PER_CU * MAX_ROWS];
+  static ap_uint<PARAM_WIDTH> weight_idx_buffer[NUM_CU][ON_CHIP_W_MAX_ROWS];
 #pragma HLS array_partition variable=weight_idx_buffer cyclic factor=16 dim=1
 #pragma HLS bind_storage variable=weight_idx_buffer type=RAM_2P impl=BRAM
 
+	// NNZ buffer to control the iteration count for each activation read 
+  static ap_uint<PARAM_WIDTH> nnz_buffer[MAX_ACT_ITRS];
+#pragma HLS bind_storage variable=nnz_buffer type=RAM_2P impl=BRAM
+
+
   if (reset) {
     // preload all the weights and the indices once for the layer
-    for (unsigned int j = 0; j < COUT_PER_CU; j++) {
-      for (unsigned int k = 0; k < MAX_ROWS; k++) {
-        unsigned int weight_offset = j * MAX_ROWS + k;
-        weight_val_buffer[0][weight_offset] = weight_values_00[weight_offset];
-        weight_idx_buffer[0][weight_offset] = weight_indices_00[weight_offset];
+    for (unsigned int j = 0; j < ON_CHIP_W_MAX_ROWS; j++) {
+      weight_val_buffer[0][j] = weight_values_00[j];
+      weight_idx_buffer[0][j] = weight_indices_00[j];
 
-        weight_val_buffer[1][weight_offset] = weight_values_01[weight_offset];
-        weight_idx_buffer[1][weight_offset] = weight_indices_01[weight_offset];
+      weight_val_buffer[1][j] = weight_values_01[j];
+      weight_idx_buffer[1][j] = weight_indices_01[j];
 
-        weight_val_buffer[2][weight_offset] = weight_values_02[weight_offset];
-        weight_idx_buffer[2][weight_offset] = weight_indices_02[weight_offset];
+      weight_val_buffer[2][j] = weight_values_02[j];
+      weight_idx_buffer[2][j] = weight_indices_02[j];
 
-        weight_val_buffer[3][weight_offset] = weight_values_03[weight_offset];
-        weight_idx_buffer[3][weight_offset] = weight_indices_03[weight_offset];
+      weight_val_buffer[3][j] = weight_values_03[j];
+      weight_idx_buffer[3][j] = weight_indices_03[j];
 
-        weight_val_buffer[4][weight_offset] = weight_values_04[weight_offset];
-        weight_idx_buffer[4][weight_offset] = weight_indices_04[weight_offset];
+      weight_val_buffer[4][j] = weight_values_04[j];
+      weight_idx_buffer[4][j] = weight_indices_04[j];
 
-        weight_val_buffer[5][weight_offset] = weight_values_05[weight_offset];
-        weight_idx_buffer[5][weight_offset] = weight_indices_05[weight_offset];
+      weight_val_buffer[5][j] = weight_values_05[j];
+      weight_idx_buffer[5][j] = weight_indices_05[j];
 
-        weight_val_buffer[6][weight_offset] = weight_values_06[weight_offset];
-        weight_idx_buffer[6][weight_offset] = weight_indices_06[weight_offset];
+      weight_val_buffer[6][j] = weight_values_06[j];
+      weight_idx_buffer[6][j] = weight_indices_06[j];
 
-        weight_val_buffer[7][weight_offset] = weight_values_07[weight_offset];
-        weight_idx_buffer[7][weight_offset] = weight_indices_07[weight_offset];
+      weight_val_buffer[7][j] = weight_values_07[j];
+      weight_idx_buffer[7][j] = weight_indices_07[j];
 
-        weight_val_buffer[8][weight_offset] = weight_values_08[weight_offset];
-        weight_idx_buffer[8][weight_offset] = weight_indices_08[weight_offset];
+      weight_val_buffer[8][j] = weight_values_08[j];
+      weight_idx_buffer[8][j] = weight_indices_08[j];
 
-        weight_val_buffer[9][weight_offset] = weight_values_09[weight_offset];
-        weight_idx_buffer[9][weight_offset] = weight_indices_09[weight_offset];
+      weight_val_buffer[9][j] = weight_values_09[j];
+      weight_idx_buffer[9][j] = weight_indices_09[j];
 
-        weight_val_buffer[10][weight_offset] = weight_values_10[weight_offset];
-        weight_idx_buffer[10][weight_offset] = weight_indices_10[weight_offset];
+      weight_val_buffer[10][j] = weight_values_10[j];
+      weight_idx_buffer[10][j] = weight_indices_10[j];
 
-        weight_val_buffer[11][weight_offset] = weight_values_11[weight_offset];
-        weight_idx_buffer[11][weight_offset] = weight_indices_11[weight_offset];
+      weight_val_buffer[11][j] = weight_values_11[j];
+      weight_idx_buffer[11][j] = weight_indices_11[j];
 
-        weight_val_buffer[12][weight_offset] = weight_values_12[weight_offset];
-        weight_idx_buffer[12][weight_offset] = weight_indices_12[weight_offset];
+      weight_val_buffer[12][j] = weight_values_12[j];
+      weight_idx_buffer[12][j] = weight_indices_12[j];
 
-        weight_val_buffer[13][weight_offset] = weight_values_13[weight_offset];
-        weight_idx_buffer[13][weight_offset] = weight_indices_13[weight_offset];
+      weight_val_buffer[13][j] = weight_values_13[j];
+      weight_idx_buffer[13][j] = weight_indices_13[j];
 
-        weight_val_buffer[14][weight_offset] = weight_values_14[weight_offset];
-        weight_idx_buffer[14][weight_offset] = weight_indices_14[weight_offset];
+      weight_val_buffer[14][j] = weight_values_14[j];
+      weight_idx_buffer[14][j] = weight_indices_14[j];
 
-        weight_val_buffer[15][weight_offset] = weight_values_15[weight_offset];
-        weight_idx_buffer[15][weight_offset] = weight_indices_15[weight_offset];
-      }
+      weight_val_buffer[15][j] = weight_values_15[j];
+      weight_idx_buffer[15][j] = weight_indices_15[j];
+    }
+    for (unsigned int j = 0; j < MAX_ACT_ITRS; j++) {
+      nnz_buffer[j] = NNZ_00[j];
     }
     reset = false;
   }
 
+  const int ACT_ITR_LOOP_COUNT = C_IN * K_H * K_W / NUM_CU;
+
   // First stream cout dimension then stream crt dimension.
   for (unsigned int i = 0; i < R * NUM_CIPHERTEXT_POLY; i++) {
     for (unsigned int j = 0; j < COUT_PER_CU; j++) {
+      unsigned int c_out_offset = j * ACT_ITR_LOOP_COUNT;
       // prologue: load activation buffer
       load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04, in_act_05,
                in_act_06, in_act_07, in_act_08, in_act_09, in_act_10, in_act_11,
@@ -408,7 +381,7 @@ void compute_linear(
                /*k=*/0, /*i=*/i);
 
       // double buffer load / compute / store
-      for (unsigned int k = 1; k < MAX_ACT_ITRS; k++) {
+      for (unsigned int k = 1; k < ACT_ITR_LOOP_COUNT; k++) {
         if (k % 2 == 1) {
           load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04,
                    in_act_05, in_act_06, in_act_07, in_act_08, in_act_09,
@@ -418,10 +391,10 @@ void compute_linear(
 
           if (j % 2 == 0) {
             comp(in_act_buffer_a, partial_sum_buffer_a, weight_val_buffer,
-                weight_idx_buffer, k - 1);
+                weight_idx_buffer, nnz_buffer, c_out_offset + k - 1);
           } else {
             comp(in_act_buffer_a, partial_sum_buffer_b, weight_val_buffer,
-                weight_idx_buffer, k - 1);
+                weight_idx_buffer, nnz_buffer, c_out_offset + k - 1);
           }
 
         } else {
@@ -433,31 +406,31 @@ void compute_linear(
 
           if (j % 2 == 0) {
             comp(in_act_buffer_b, partial_sum_buffer_a, weight_val_buffer,
-                weight_idx_buffer, k - 1);
+                weight_idx_buffer, nnz_buffer, c_out_offset + k - 1);
           } else {
             comp(in_act_buffer_b, partial_sum_buffer_b, weight_val_buffer,
-                weight_idx_buffer, k - 1);
+                weight_idx_buffer, nnz_buffer, c_out_offset + k - 1);
           }
 
         }
       }
 
       // Epilogue: finish the compute of the last compute iteration.
-      if (MAX_ACT_ITRS % 2 == 1) {
+      if (ACT_ITR_LOOP_COUNT % 2 == 1) {
         if (j % 2 == 0) {
           comp(in_act_buffer_a, partial_sum_buffer_a, weight_val_buffer,
-              weight_idx_buffer, MAX_ACT_ITRS - 1);
+              weight_idx_buffer, nnz_buffer, c_out_offset + ACT_ITR_LOOP_COUNT - 1);
         } else {
           comp(in_act_buffer_a, partial_sum_buffer_b, weight_val_buffer,
-              weight_idx_buffer, MAX_ACT_ITRS - 1);
+              weight_idx_buffer, nnz_buffer, c_out_offset + ACT_ITR_LOOP_COUNT - 1);
         }
       } else {
         if (j % 2 == 0) {
           comp(in_act_buffer_b, partial_sum_buffer_a, weight_val_buffer,
-              weight_idx_buffer, MAX_ACT_ITRS - 1);
+              weight_idx_buffer, nnz_buffer, c_out_offset + ACT_ITR_LOOP_COUNT - 1);
         } else {
           comp(in_act_buffer_b, partial_sum_buffer_b, weight_val_buffer,
-              weight_idx_buffer, MAX_ACT_ITRS - 1);
+              weight_idx_buffer, nnz_buffer, c_out_offset + ACT_ITR_LOOP_COUNT - 1);
         }
       }
 
@@ -479,30 +452,30 @@ void compute_linear(
     }
   }
 
-//   // testing
-//   testing_loop: for (unsigned int j = 0;
-//        j < N / COEF_PER_BEAT; j++) {
-// #pragma HLS pipeline II=2
-//     pre_act_stream_00 << in_act_buffer_a[0][j];
-//     pre_act_stream_01 << in_act_buffer_a[1][j];
-//     pre_act_stream_02 << in_act_buffer_a[2][j];
-//     pre_act_stream_03 << in_act_buffer_a[3][j];
-//     pre_act_stream_04 << in_act_buffer_a[4][j];
-//     pre_act_stream_05 << in_act_buffer_a[5][j];
-//     pre_act_stream_06 << in_act_buffer_a[6][j];
-//     pre_act_stream_07 << in_act_buffer_a[7][j];
-//     pre_act_stream_08 << in_act_buffer_a[8][j];
-//     pre_act_stream_09 << in_act_buffer_a[9][j];
-//     pre_act_stream_10 << in_act_buffer_a[10][j];
-//     pre_act_stream_11 << in_act_buffer_a[11][j];
-//     pre_act_stream_12 << in_act_buffer_a[12][j];
-//     pre_act_stream_13 << in_act_buffer_a[13][j];
-//     pre_act_stream_14 << in_act_buffer_a[14][j];
-//     pre_act_stream_15 << in_act_buffer_a[15][j];
-//   }
+//  // testing
+//  testing_loop: for (unsigned int j = 0;
+//       j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
+//#pragma HLS pipeline II=1
+//    pre_act_stream_00 << in_act_buffer_a[0][j % 16];
+//    pre_act_stream_01 << in_act_buffer_a[1][j % 16];
+//    pre_act_stream_02 << in_act_buffer_a[2][j % 16];
+//    pre_act_stream_03 << in_act_buffer_a[3][j % 16];
+//    pre_act_stream_04 << in_act_buffer_a[4][j % 16];
+//    pre_act_stream_05 << in_act_buffer_a[5][j % 16];
+//    pre_act_stream_06 << in_act_buffer_a[6][j % 16];
+//    pre_act_stream_07 << in_act_buffer_a[7][j % 16];
+//    pre_act_stream_08 << in_act_buffer_a[8][j % 16];
+//    pre_act_stream_09 << in_act_buffer_a[9][j % 16];
+//    pre_act_stream_10 << in_act_buffer_a[10][j % 16];
+//    pre_act_stream_11 << in_act_buffer_a[11][j % 16];
+//    pre_act_stream_12 << in_act_buffer_a[12][j % 16];
+//    pre_act_stream_13 << in_act_buffer_a[13][j % 16];
+//    pre_act_stream_14 << in_act_buffer_a[14][j % 16];
+//    pre_act_stream_15 << in_act_buffer_a[15][j % 16];
+//  }
 }
 
-static void store_act(
+void store_act(
     // pre_act stream
     hls::stream<Coef_Bundle> &pre_act_stream_00,
     hls::stream<Coef_Bundle> &pre_act_stream_01,
@@ -553,8 +526,9 @@ static void store_act(
         out_act_14[COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT],
     Coef_Bundle
         out_act_15[COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT]) {
-  for (unsigned int j = 0;
+  out_to_dram_loop: for (unsigned int j = 0;
        j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
+#pragma HLS pipeline II=1
     out_act_00[j] = pre_act_stream_00.read();
     out_act_01[j] = pre_act_stream_01.read();
     out_act_02[j] = pre_act_stream_02.read();
@@ -655,56 +629,56 @@ extern "C" {
 
 void he_snn(
     // NNZ
-    ap_uint<PARAM_WIDTH> NNZ_00[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_01[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_02[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_03[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_04[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_05[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_06[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_07[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_08[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_09[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_10[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_11[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_12[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_13[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_14[COUT_PER_CU],
-    ap_uint<PARAM_WIDTH> NNZ_15[COUT_PER_CU],
+    ap_uint<PARAM_WIDTH> NNZ_00[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_01[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_02[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_03[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_04[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_05[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_06[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_07[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_08[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_09[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_10[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_11[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_12[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_13[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_14[MAX_ACT_ITRS],
+    ap_uint<PARAM_WIDTH> NNZ_15[MAX_ACT_ITRS],
     // Weight values
-    ap_uint<PARAM_WIDTH> weight_values_00[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_01[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_02[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_03[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_04[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_05[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_06[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_07[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_08[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_09[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_10[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_11[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_12[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_13[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_14[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_values_15[COUT_PER_CU * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_00[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_01[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_02[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_03[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_04[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_05[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_06[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_07[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_08[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_09[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_10[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_11[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_12[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_13[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_14[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_values_15[OFF_CHIP_W_MAX_ROWS],
     // Weight indices
-    ap_uint<PARAM_WIDTH> weight_indices_00[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_01[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_02[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_03[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_04[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_05[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_06[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_07[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_08[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_09[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_10[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_11[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_12[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_13[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_14[COUT_PER_CU * MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_indices_15[COUT_PER_CU * MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_00[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_01[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_02[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_03[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_04[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_05[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_06[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_07[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_08[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_09[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_10[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_11[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_12[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_13[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_14[OFF_CHIP_W_MAX_ROWS],
+    ap_uint<PARAM_WIDTH> weight_indices_15[OFF_CHIP_W_MAX_ROWS],
     // In act
     Coef_Bundle in_act_00[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
                           COEF_PER_BEAT],
@@ -856,22 +830,22 @@ void he_snn(
 #pragma HLS INTERFACE m_axi port = out_act_14 bundle = g_out_act_14
 #pragma HLS INTERFACE m_axi port = out_act_15 bundle = g_out_act_15
 
-  static hls::stream<Coef_Bundle, 32> in_stream_00;
-  static hls::stream<Coef_Bundle, 32> in_stream_01;
-  static hls::stream<Coef_Bundle, 32> in_stream_02;
-  static hls::stream<Coef_Bundle, 32> in_stream_03;
-  static hls::stream<Coef_Bundle, 32> in_stream_04;
-  static hls::stream<Coef_Bundle, 32> in_stream_05;
-  static hls::stream<Coef_Bundle, 32> in_stream_06;
-  static hls::stream<Coef_Bundle, 32> in_stream_07;
-  static hls::stream<Coef_Bundle, 32> in_stream_08;
-  static hls::stream<Coef_Bundle, 32> in_stream_09;
-  static hls::stream<Coef_Bundle, 32> in_stream_10;
-  static hls::stream<Coef_Bundle, 32> in_stream_11;
-  static hls::stream<Coef_Bundle, 32> in_stream_12;
-  static hls::stream<Coef_Bundle, 32> in_stream_13;
-  static hls::stream<Coef_Bundle, 32> in_stream_14;
-  static hls::stream<Coef_Bundle, 32> in_stream_15;
+  // static hls::stream<Coef_Bundle, 32> in_stream_00;
+  // static hls::stream<Coef_Bundle, 32> in_stream_01;
+  // static hls::stream<Coef_Bundle, 32> in_stream_02;
+  // static hls::stream<Coef_Bundle, 32> in_stream_03;
+  // static hls::stream<Coef_Bundle, 32> in_stream_04;
+  // static hls::stream<Coef_Bundle, 32> in_stream_05;
+  // static hls::stream<Coef_Bundle, 32> in_stream_06;
+  // static hls::stream<Coef_Bundle, 32> in_stream_07;
+  // static hls::stream<Coef_Bundle, 32> in_stream_08;
+  // static hls::stream<Coef_Bundle, 32> in_stream_09;
+  // static hls::stream<Coef_Bundle, 32> in_stream_10;
+  // static hls::stream<Coef_Bundle, 32> in_stream_11;
+  // static hls::stream<Coef_Bundle, 32> in_stream_12;
+  // static hls::stream<Coef_Bundle, 32> in_stream_13;
+  // static hls::stream<Coef_Bundle, 32> in_stream_14;
+  // static hls::stream<Coef_Bundle, 32> in_stream_15;
 
   static hls::stream<Coef_Bundle, 32> pre_act_stream_00;
   static hls::stream<Coef_Bundle, 32> pre_act_stream_01;
@@ -906,7 +880,10 @@ void he_snn(
       pre_act_stream_04, pre_act_stream_05, pre_act_stream_06,
       pre_act_stream_07, pre_act_stream_08, pre_act_stream_09,
       pre_act_stream_10, pre_act_stream_11, pre_act_stream_12,
-      pre_act_stream_13, pre_act_stream_14, pre_act_stream_15, weight_values_00,
+      pre_act_stream_13, pre_act_stream_14, pre_act_stream_15,
+      NNZ_00, NNZ_01,NNZ_02,NNZ_03,NNZ_04,NNZ_05,NNZ_06,NNZ_07,NNZ_08,NNZ_09,
+      NNZ_10,NNZ_11,NNZ_12,NNZ_13,NNZ_14,NNZ_15,
+      weight_values_00,
       weight_values_01, weight_values_02, weight_values_03, weight_values_04,
       weight_values_05, weight_values_06, weight_values_07, weight_values_08,
       weight_values_09, weight_values_10, weight_values_11, weight_values_12,
