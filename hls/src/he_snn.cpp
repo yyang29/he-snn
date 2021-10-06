@@ -161,6 +161,7 @@ void load_act(
 }
 
 void compute_linear(
+    ap_uint<PARAM_WIDTH> in_loop_count[MAX_ACT_ITRS],
     // In act
     Coef_Bundle in_act_00[CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
                           COEF_PER_BEAT],
@@ -309,7 +310,10 @@ void compute_linear(
 	// NNZ buffer to control the iteration count for each activation read 
   static ap_uint<PARAM_WIDTH> nnz_buffer[MAX_ACT_ITRS];
 #pragma HLS bind_storage variable=nnz_buffer type=RAM_2P impl=BRAM
-
+	// NNZ buffer to control the iteration count for each activation read 
+  static ap_uint<PARAM_WIDTH> in_loop_count_buffer[MAX_ACT_ITRS];
+#pragma HLS array_partition variable=in_loop_count_buffer cyclic factor=2 dim=1
+#pragma HLS bind_storage variable=in_loop_count_buffer type=RAM_2P impl=BRAM
 
   if (reset) {
     // preload all the weights and the indices once for the layer
@@ -364,16 +368,17 @@ void compute_linear(
     }
     for (unsigned int j = 0; j < MAX_ACT_ITRS; j++) {
       nnz_buffer[j] = NNZ_00[j];
+      in_loop_count_buffer[j] = in_loop_count[j];
     }
     reset = false;
   }
 
-  const int ACT_ITR_LOOP_COUNT = C_IN * K_H * K_W / NUM_CU;
-
   // First stream cout dimension then stream crt dimension.
   for (unsigned int i = 0; i < R * NUM_CIPHERTEXT_POLY; i++) {
     for (unsigned int j = 0; j < COUT_PER_CU; j++) {
-      unsigned int c_out_offset = j * ACT_ITR_LOOP_COUNT;
+      unsigned int start = (j == 0) ? 0 : static_cast<unsigned int>(in_loop_count[j-1]);
+      unsigned int end = in_loop_count[j];
+      unsigned int itr_count = end - start;
       // prologue: load activation buffer
       load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04, in_act_05,
                in_act_06, in_act_07, in_act_08, in_act_09, in_act_10, in_act_11,
@@ -381,7 +386,7 @@ void compute_linear(
                /*k=*/0, /*i=*/i);
 
       // double buffer load / compute / store
-      for (unsigned int k = 1; k < ACT_ITR_LOOP_COUNT; k++) {
+      for (unsigned int k = 1; k < itr_count; k++) {
         if (k % 2 == 1) {
           load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04,
                    in_act_05, in_act_06, in_act_07, in_act_08, in_act_09,
@@ -391,10 +396,10 @@ void compute_linear(
 
           if (j % 2 == 0) {
             comp(in_act_buffer_a, partial_sum_buffer_a, weight_val_buffer,
-                weight_idx_buffer, nnz_buffer, c_out_offset + k - 1);
+                weight_idx_buffer, nnz_buffer, start + k - 1);
           } else {
             comp(in_act_buffer_a, partial_sum_buffer_b, weight_val_buffer,
-                weight_idx_buffer, nnz_buffer, c_out_offset + k - 1);
+                weight_idx_buffer, nnz_buffer, start + k - 1);
           }
 
         } else {
@@ -406,31 +411,31 @@ void compute_linear(
 
           if (j % 2 == 0) {
             comp(in_act_buffer_b, partial_sum_buffer_a, weight_val_buffer,
-                weight_idx_buffer, nnz_buffer, c_out_offset + k - 1);
+                weight_idx_buffer, nnz_buffer, start + k - 1);
           } else {
             comp(in_act_buffer_b, partial_sum_buffer_b, weight_val_buffer,
-                weight_idx_buffer, nnz_buffer, c_out_offset + k - 1);
+                weight_idx_buffer, nnz_buffer, start + k - 1);
           }
 
         }
       }
 
       // Epilogue: finish the compute of the last compute iteration.
-      if (ACT_ITR_LOOP_COUNT % 2 == 1) {
+      if (itr_count % 2 == 1) {
         if (j % 2 == 0) {
           comp(in_act_buffer_a, partial_sum_buffer_a, weight_val_buffer,
-              weight_idx_buffer, nnz_buffer, c_out_offset + ACT_ITR_LOOP_COUNT - 1);
+              weight_idx_buffer, nnz_buffer, start + itr_count - 1);
         } else {
           comp(in_act_buffer_a, partial_sum_buffer_b, weight_val_buffer,
-              weight_idx_buffer, nnz_buffer, c_out_offset + ACT_ITR_LOOP_COUNT - 1);
+              weight_idx_buffer, nnz_buffer, start + itr_count - 1);
         }
       } else {
         if (j % 2 == 0) {
           comp(in_act_buffer_b, partial_sum_buffer_a, weight_val_buffer,
-              weight_idx_buffer, nnz_buffer, c_out_offset + ACT_ITR_LOOP_COUNT - 1);
+              weight_idx_buffer, nnz_buffer, start + itr_count - 1);
         } else {
           comp(in_act_buffer_b, partial_sum_buffer_b, weight_val_buffer,
-              weight_idx_buffer, nnz_buffer, c_out_offset + ACT_ITR_LOOP_COUNT - 1);
+              weight_idx_buffer, nnz_buffer, start + itr_count - 1);
         }
       }
 
@@ -628,6 +633,7 @@ void store_act(
 extern "C" {
 
 void he_snn(
+    ap_uint<PARAM_WIDTH> in_loop_count[MAX_ACT_ITRS],
     // NNZ
     ap_uint<PARAM_WIDTH> NNZ_00[MAX_ACT_ITRS],
     ap_uint<PARAM_WIDTH> NNZ_01[MAX_ACT_ITRS],
@@ -745,6 +751,7 @@ void he_snn(
         out_act_14[COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT],
     Coef_Bundle
         out_act_15[COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT]) {
+#pragma HLS INTERFACE m_axi port = in_loop_count bundle = g_weight_00
 #pragma HLS INTERFACE m_axi port = NNZ_00 bundle = g_weight_00
 #pragma HLS INTERFACE m_axi port = NNZ_01 bundle = g_weight_00
 #pragma HLS INTERFACE m_axi port = NNZ_02 bundle = g_weight_00
@@ -872,7 +879,7 @@ void he_snn(
   //     in_stream_02, in_stream_03, in_stream_04, in_stream_05, in_stream_06,
   //     in_stream_07, in_stream_08, in_stream_09, in_stream_10, in_stream_11,
   //     in_stream_12, in_stream_13, in_stream_14, in_stream_15);
-  compute_linear(
+  compute_linear(in_loop_count,
       in_act_00, in_act_01, in_act_02, in_act_03, in_act_04, in_act_05,
       in_act_06, in_act_07, in_act_08, in_act_09, in_act_10, in_act_11,
       in_act_12, in_act_13, in_act_14, in_act_15, pre_act_stream_00,

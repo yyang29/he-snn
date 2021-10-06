@@ -20,6 +20,13 @@ int main(int argc, char **argv) {
   // sparsity map
   std::vector<std::vector<ap_uint<PARAM_WIDTH>,
                           aligned_allocator<ap_uint<PARAM_WIDTH>>>>
+      in_loop_count(NUM_CU,
+                    std::vector<ap_uint<PARAM_WIDTH>,
+                                aligned_allocator<ap_uint<PARAM_WIDTH>>>(
+                        MAX_ACT_ITRS, 0));
+  // sparsity map
+  std::vector<std::vector<ap_uint<PARAM_WIDTH>,
+                          aligned_allocator<ap_uint<PARAM_WIDTH>>>>
       NNZ(NUM_CU, std::vector<ap_uint<PARAM_WIDTH>,
                               aligned_allocator<ap_uint<PARAM_WIDTH>>>(
                       MAX_ACT_ITRS, 0));
@@ -97,6 +104,33 @@ int main(int argc, char **argv) {
   }
   ifs.close();
 
+  ifs.open(filename + "_in_loop_bp.txt");
+  row_id = 0;
+  while (true) {
+    std::string line;
+    double buf;
+    getline(ifs, line);
+    std::stringstream ss(line, std::ios_base::out | std::ios_base::in |
+                                   std::ios_base::binary);
+
+    if (!ifs)
+      break;
+    if (line[0] == '#' || line.empty())
+      continue;
+
+    std::vector<double> row;
+    while (ss >> buf)
+      row.push_back(buf);
+
+    unsigned int num = static_cast<unsigned int>(row[0]);
+    for (unsigned int i = 0; i < NUM_CU; i++) {
+      in_loop_count[i][row_id] = num;
+    }
+  
+    row_id++;
+  }
+  ifs.close();
+
   ifs.open(filename + "_wv_bp.txt");
   row_id = 0;
   while (true) {
@@ -162,6 +196,7 @@ int main(int argc, char **argv) {
   // }
 
   // device pointers
+  std::vector<cl_mem_ext_ptr_t> in_loop_count_ext(NUM_CU);
   std::vector<cl_mem_ext_ptr_t> NNZ_ext(NUM_CU);
   std::vector<cl_mem_ext_ptr_t> weight_values_ext(NUM_CU);
   std::vector<cl_mem_ext_ptr_t> weight_indices_ext(NUM_CU);
@@ -169,30 +204,35 @@ int main(int argc, char **argv) {
   std::vector<cl_mem_ext_ptr_t> out_act_ext(NUM_CU);
   for (int i = 0; i < NUM_CU; i++) {
     if (i < 4) {
+      in_loop_count_ext[i].flags = XCL_MEM_DDR_BANK0;
       NNZ_ext[i].flags = XCL_MEM_DDR_BANK0;
       weight_values_ext[i].flags = XCL_MEM_DDR_BANK0;
       weight_indices_ext[i].flags = XCL_MEM_DDR_BANK0;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK0;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK0;
     } else if (i < 8) {
+      in_loop_count_ext[i].flags = XCL_MEM_DDR_BANK1;
       NNZ_ext[i].flags = XCL_MEM_DDR_BANK1;
       weight_values_ext[i].flags = XCL_MEM_DDR_BANK1;
       weight_indices_ext[i].flags = XCL_MEM_DDR_BANK1;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK1;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK1;
     } else if (i < 12) {
+      in_loop_count_ext[i].flags = XCL_MEM_DDR_BANK2;
       NNZ_ext[i].flags = XCL_MEM_DDR_BANK2;
       weight_values_ext[i].flags = XCL_MEM_DDR_BANK2;
       weight_indices_ext[i].flags = XCL_MEM_DDR_BANK2;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK2;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK2;
     } else if (i < 16) {
+      in_loop_count_ext[i].flags = XCL_MEM_DDR_BANK3;
       NNZ_ext[i].flags = XCL_MEM_DDR_BANK3;
       weight_values_ext[i].flags = XCL_MEM_DDR_BANK3;
       weight_indices_ext[i].flags = XCL_MEM_DDR_BANK3;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK3;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK3;
     }
+    in_loop_count_ext[i].obj = in_loop_count[i].data();
     NNZ_ext[i].obj = NNZ[i].data();
     weight_values_ext[i].obj = weight_values[i].data();
     weight_indices_ext[i].obj = weight_indices[i].data();
@@ -229,6 +269,7 @@ int main(int argc, char **argv) {
   // Allocate Buffer in Global Memory
   // Buffers are allocated using CL_MEM_USE_HOST_PTR for efficient memory and
   // Device-to-host communication
+  std::vector<cl::Buffer> buffer_in_loop_count(NUM_CU);
   std::vector<cl::Buffer> buffer_NNZ(NUM_CU);
   std::vector<cl::Buffer> buffer_weight_values(NUM_CU);
   std::vector<cl::Buffer> buffer_weight_indices(NUM_CU);
@@ -237,6 +278,11 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < NUM_CU; i++) {
     // read-only buffers
+    OCL_CHECK(
+        err, buffer_in_loop_count[i] = cl::Buffer(
+                 context,
+                 CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
+                 MAX_ACT_ITRS * BYTES_INT64, &in_loop_count_ext[i], &err));
     OCL_CHECK(
         err, buffer_NNZ[i] = cl::Buffer(
                  context,
@@ -269,6 +315,7 @@ int main(int argc, char **argv) {
   }
 
   // Using events to ensure dependencies
+  std::vector<cl::Event> in_loop_count_write_event(NUM_CU);
   std::vector<cl::Event> NNZ_write_event(NUM_CU);
   std::vector<cl::Event> weight_values_write_event(NUM_CU);
   std::vector<cl::Event> weight_indices_write_event(NUM_CU);
@@ -279,6 +326,9 @@ int main(int argc, char **argv) {
 
   // Copy input data to device global memory
   for (int i = 0; i < NUM_CU; i++) {
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in_loop_count[i]},
+                                                    0 /* 0 means from host*/,
+                                                    NULL, &in_loop_count_write_event[i]));
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_NNZ[i]},
                                                     0 /* 0 means from host*/,
                                                     NULL, &NNZ_write_event[i]));
@@ -296,6 +346,7 @@ int main(int argc, char **argv) {
 
   // Copy kernel arguments
   int num_args = 0;
+  OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_in_loop_count[0]));
   for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_NNZ[i]));
   }
