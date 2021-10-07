@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
     for (unsigned int i = 0; i < NUM_CU; i++) {
       NNZ[i][row_id] = num;
     }
-  
+
     row_id++;
   }
   ifs.close();
@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
     for (unsigned int i = 0; i < NUM_CU; i++) {
       in_loop_count[i][row_id] = num;
     }
-  
+
     row_id++;
   }
   ifs.close();
@@ -326,9 +326,9 @@ int main(int argc, char **argv) {
 
   // Copy input data to device global memory
   for (int i = 0; i < NUM_CU; i++) {
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in_loop_count[i]},
-                                                    0 /* 0 means from host*/,
-                                                    NULL, &in_loop_count_write_event[i]));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
+                       {buffer_in_loop_count[i]}, 0 /* 0 means from host*/,
+                       NULL, &in_loop_count_write_event[i]));
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_NNZ[i]},
                                                     0 /* 0 means from host*/,
                                                     NULL, &NNZ_write_event[i]));
@@ -387,16 +387,16 @@ int main(int argc, char **argv) {
 
   // Compare the results of the Device to the simulation
   unsigned int mismatch_count = 0;
-  // for (int i = 0; i < NUM_CU; i++) {
-  //   for (int j = 0;
-  //        j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
-  //     for (int k = 0; k < COEF_PER_BEAT; k++) {
-  //       if (out_act[i][j].data[k] != in_act[i][j].data[k]) {
-  //         mismatch_count++;
-  //       }
-  //     }
-  //   }
-  // }
+  for (int i = 0; i < NUM_CU; i++) {
+    for (int j = 0;
+         j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
+      for (int k = 0; k < COEF_PER_BEAT; k++) {
+        if (out_act[i][j].data[k] != in_act[i][j].data[k]) {
+          mismatch_count++;
+        }
+      }
+    }
+  }
 
   std::cout << "mismatch count: " << mismatch_count << std::endl;
   return 0;
