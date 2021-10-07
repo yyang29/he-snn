@@ -47,9 +47,11 @@ struct Polynomial {
 #define COEF_BUNDLE_BITS 256
 #define COEF_PER_BEAT (COEF_BUNDLE_BITS / COEF_WIDTH)
 
-struct Coef_Bundle {
-  ap_uint<COEF_WIDTH> data[COEF_PER_BEAT];
-};
+// struct Coef_Bundle {
+//   ap_uint<COEF_WIDTH> data[COEF_PER_BEAT];
+// };
+
+typedef ap_uint<COEF_BUNDLE_BITS> Coef_Bundle;
 
 const ap_uint<COEF_WIDTH> q_0[7] = {
   184467440727095, 184542340737095, 184467440737095, 184467440373095,

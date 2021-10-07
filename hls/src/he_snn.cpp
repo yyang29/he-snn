@@ -5,6 +5,19 @@
 #include "assert.h"
 #include "defs.h"
 
+ap_uint<COEF_WIDTH> mod_add(ap_uint<COEF_WIDTH> x, ap_uint<COEF_WIDTH> y,
+                            const ap_uint<COEF_WIDTH> q) {
+#pragma hls inline
+  ap_uint<2 * COEF_WIDTH> z;
+
+  z = x + y;
+  if (z >= q)
+    z -= q;
+  // std::cout << "Computation x: " << x << " y: " << y
+  //           << " out: " << out << std::endl;
+  return z;
+}
+
 ap_uint<COEF_WIDTH> mod_mult(ap_uint<COEF_WIDTH> x, ap_uint<COEF_WIDTH> y,
                              const ap_uint<COEF_WIDTH> q,
                              const ap_uint<COEF_WIDTH> q_inv) {
@@ -70,10 +83,11 @@ act_loop:
         Coef_Bundle in_bundle = act_buffer[bank_id][m];
         Coef_Bundle out_bundle = partial_sum_buffer[cu_id][m];
         for (unsigned i = 0; i < COEF_PER_BEAT; i++) {
-#pragma HLS unroll
-          out_bundle.data[i] +=
-              mod_mult(weight_val_buffer[cu_id][counter], in_bundle.data[i],
-                       q_0[rns], q_0_inv[rns]);
+          ap_uint<COEF_WIDTH> ps = out_bundle((i + 1) * COEF_WIDTH - 1, i * COEF_WIDTH);
+          ap_uint<COEF_WIDTH> in_act = in_bundle((i + 1) * COEF_WIDTH - 1, i * COEF_WIDTH);
+          ap_uint<COEF_WIDTH> mult = mod_mult(weight_val_buffer[cu_id][counter], in_act, q_0[rns], q_0_inv[rns]);
+          ps = mod_add(ps, mult, q_0[rns]);
+          out_bundle((i + 1) * COEF_WIDTH - 1, i * COEF_WIDTH) = ps;
         }
         partial_sum_buffer[cu_id][m] = out_bundle;
       }
