@@ -8,6 +8,7 @@
 ap_uint<COEF_WIDTH> mod_mult(ap_uint<COEF_WIDTH> x, ap_uint<COEF_WIDTH> y,
                              const ap_uint<COEF_WIDTH> q,
                              const ap_uint<COEF_WIDTH> q_inv) {
+#pragma hls inline
   ap_uint<2 * COEF_WIDTH> z;
   ap_uint<COEF_WIDTH> out;
   ap_uint<2 * COEF_WIDTH> t;
@@ -24,39 +25,61 @@ ap_uint<COEF_WIDTH> mod_mult(ap_uint<COEF_WIDTH> x, ap_uint<COEF_WIDTH> y,
   return out;
 }
 
-void pe_proc(
-  Coef_Bundle poly_in_act[N / COEF_PER_BEAT],
-  Coef_Bundle poly_out_act[N / COEF_PER_BEAT],
-  ap_uint<PARAM_WIDTH> weight_val) {
-#pragma hls inline off
-  for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
-    Coef_Bundle in_bundle = poly_in_act[m];
-    Coef_Bundle out_bundle = poly_out_act[m];
-    for (unsigned i = 0; i < COEF_PER_BEAT; i++) {
-#pragma HLS unroll
-      out_bundle.data[i] += mod_mult(weight_val, in_bundle.data[i], q_0, q_0_inv);
-    }
-    poly_out_act[m] = out_bundle;
-  }
-}
+// void pe_proc(Coef_Bundle poly_in_act[N / COEF_PER_BEAT],
+//              Coef_Bundle poly_out_act[N / COEF_PER_BEAT],
+//              ap_uint<PARAM_WIDTH> weight_val, unsigned int rns) {
+// #pragma hls inline
+//   for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+//     Coef_Bundle in_bundle = poly_in_act[m];
+//     Coef_Bundle out_bundle = poly_out_act[m];
+//     for (unsigned i = 0; i < COEF_PER_BEAT; i++) {
+// #pragma HLS unroll
+//       out_bundle.data[i] +=
+//           mod_mult(weight_val, in_bundle.data[i], q_0[rns], q_0_inv[rns]);
+//     }
+//     poly_out_act[m] = out_bundle;
+//   }
+// }
 
-void comp(
-    Coef_Bundle act_buffer[NUM_CU][N / COEF_PER_BEAT],
-    Coef_Bundle partial_sum_buffer[NUM_CU][N / COEF_PER_BEAT],
-    ap_uint<PARAM_WIDTH> weight_val_buffer[NUM_CU][ON_CHIP_W_MAX_ROWS],
-    ap_uint<PARAM_WIDTH> weight_idx_buffer[NUM_CU][ON_CHIP_W_MAX_ROWS],
-    ap_uint<PARAM_WIDTH> in_itr_count[MAX_ACT_ITRS],
-    unsigned k) {
+void comp(Coef_Bundle act_buffer[NUM_CU][N / COEF_PER_BEAT],
+          Coef_Bundle partial_sum_buffer[NUM_CU][N / COEF_PER_BEAT],
+          ap_uint<PARAM_WIDTH> weight_val_buffer[NUM_CU][ON_CHIP_W_MAX_ROWS],
+          ap_uint<PARAM_WIDTH> weight_idx_buffer[NUM_CU][ON_CHIP_W_MAX_ROWS],
+          ap_uint<PARAM_WIDTH> in_itr_count[MAX_ACT_ITRS], unsigned int k,
+          unsigned int j, unsigned int i) {
 
-  for (unsigned int i = 0; i < in_itr_count[k]; i++) {
-    for (unsigned int j = 0; j < NUM_CU; j++) {
-#pragma HLS unroll
-      unsigned int bank_id = weight_idx_buffer[j][k + i];
-      pe_proc(act_buffer[bank_id], partial_sum_buffer[j],
-              weight_val_buffer[j][k + i]);
-    }
+  static unsigned int counter;
+  // reset counter when a new rns component starts.
+  if (j == 0) {
+    counter = 0;
   }
 
+  std::cout << "compute " << k << " iteration count: " << in_itr_count[k]
+            << " RNS term: " << i << std::endl;
+
+act_loop:
+  for (unsigned int itr = 0; itr < in_itr_count[k]; itr++) {
+  poly_loop:
+    for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
+#pragma HLS pipeline
+#pragma HLS DEPENDENCE variable = partial_sum_buffer inter false
+    PE_loop:
+      for (unsigned int cu_id = 0; cu_id < NUM_CU; cu_id++) {
+#pragma HLS unroll
+        unsigned int bank_id = weight_idx_buffer[cu_id][counter];
+        Coef_Bundle in_bundle = act_buffer[bank_id][m];
+        Coef_Bundle out_bundle = partial_sum_buffer[cu_id][m];
+        for (unsigned i = 0; i < COEF_PER_BEAT; i++) {
+#pragma HLS unroll
+          out_bundle.data[i] +=
+              mod_mult(weight_val_buffer[cu_id][counter], in_bundle.data[i],
+                       q_0[rns], q_0_inv[rns]);
+        }
+        partial_sum_buffer[cu_id][m] = out_bundle;
+      }
+    }
+    counter++;
+  }
 }
 
 void write_result(
@@ -137,6 +160,7 @@ void load_act(
   // load one polynomial from act iteration k, RNS term rns
   unsigned int base_offset = k * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT +
     rns * N / COEF_PER_BEAT;
+  // std::cout << "load act idx: " << base_offset << std::endl;
   load_act_loop: for (unsigned int m = 0; m < N / COEF_PER_BEAT; m++) {
 #pragma HLS pipeline II=1
     unsigned int polynomial_offset = base_offset + m;
@@ -157,7 +181,7 @@ void load_act(
     act_buffer[14][m] = in_act_14[polynomial_offset];
     act_buffer[15][m] = in_act_15[polynomial_offset];
   }
-  std::cout << "finished writting " << NUM_CU << " polynomials." << std::endl;
+  // std::cout << "finished writting " << NUM_CU << " polynomials." << std::endl;
 }
 
 void compute_linear(
@@ -379,6 +403,7 @@ void compute_linear(
       unsigned int start = (j == 0) ? 0 : static_cast<unsigned int>(in_loop_count[j-1]);
       unsigned int end = in_loop_count[j];
       unsigned int itr_count = end - start;
+      std::cout << "iteration count for cout " << j << " batch: " << itr_count << std::endl;
       // prologue: load activation buffer
       load_act(in_act_00, in_act_01, in_act_02, in_act_03, in_act_04, in_act_05,
                in_act_06, in_act_07, in_act_08, in_act_09, in_act_10, in_act_11,
@@ -396,10 +421,10 @@ void compute_linear(
 
           if (j % 2 == 0) {
             comp(in_act_buffer_a, partial_sum_buffer_a, weight_val_buffer,
-                weight_idx_buffer, nnz_buffer, start + k - 1);
+                weight_idx_buffer, nnz_buffer, start + k - 1, j, i % R);
           } else {
             comp(in_act_buffer_a, partial_sum_buffer_b, weight_val_buffer,
-                weight_idx_buffer, nnz_buffer, start + k - 1);
+                weight_idx_buffer, nnz_buffer, start + k - 1, j, i % R);
           }
 
         } else {
@@ -411,10 +436,10 @@ void compute_linear(
 
           if (j % 2 == 0) {
             comp(in_act_buffer_b, partial_sum_buffer_a, weight_val_buffer,
-                weight_idx_buffer, nnz_buffer, start + k - 1);
+                weight_idx_buffer, nnz_buffer, start + k - 1, j, i % R);
           } else {
             comp(in_act_buffer_b, partial_sum_buffer_b, weight_val_buffer,
-                weight_idx_buffer, nnz_buffer, start + k - 1);
+                weight_idx_buffer, nnz_buffer, start + k - 1, j, i % R);
           }
 
         }
@@ -424,18 +449,18 @@ void compute_linear(
       if (itr_count % 2 == 1) {
         if (j % 2 == 0) {
           comp(in_act_buffer_a, partial_sum_buffer_a, weight_val_buffer,
-              weight_idx_buffer, nnz_buffer, start + itr_count - 1);
+              weight_idx_buffer, nnz_buffer, start + itr_count - 1, j, i % R);
         } else {
           comp(in_act_buffer_a, partial_sum_buffer_b, weight_val_buffer,
-              weight_idx_buffer, nnz_buffer, start + itr_count - 1);
+              weight_idx_buffer, nnz_buffer, start + itr_count - 1, j, i % R);
         }
       } else {
         if (j % 2 == 0) {
           comp(in_act_buffer_b, partial_sum_buffer_a, weight_val_buffer,
-              weight_idx_buffer, nnz_buffer, start + itr_count - 1);
+              weight_idx_buffer, nnz_buffer, start + itr_count - 1, j, i % R);
         } else {
           comp(in_act_buffer_b, partial_sum_buffer_b, weight_val_buffer,
-              weight_idx_buffer, nnz_buffer, start + itr_count - 1);
+              weight_idx_buffer, nnz_buffer, start + itr_count - 1, j, i % R);
         }
       }
 
