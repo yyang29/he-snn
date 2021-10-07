@@ -46,7 +46,7 @@ void comp(Coef_Bundle act_buffer[NUM_CU][N / COEF_PER_BEAT],
           ap_uint<PARAM_WIDTH> weight_val_buffer[NUM_CU][ON_CHIP_W_MAX_ROWS],
           ap_uint<PARAM_WIDTH> weight_idx_buffer[NUM_CU][ON_CHIP_W_MAX_ROWS],
           ap_uint<PARAM_WIDTH> in_itr_count[MAX_ACT_ITRS], unsigned int k,
-          unsigned int j, unsigned int i) {
+          unsigned int j, unsigned int rns) {
 
   static unsigned int counter;
   // reset counter when a new rns component starts.
@@ -55,7 +55,7 @@ void comp(Coef_Bundle act_buffer[NUM_CU][N / COEF_PER_BEAT],
   }
 
   std::cout << "compute " << k << " iteration count: " << in_itr_count[k]
-            << " RNS term: " << i << std::endl;
+            << " RNS term: " << rns << std::endl;
 
 act_loop:
   for (unsigned int itr = 0; itr < in_itr_count[k]; itr++) {
