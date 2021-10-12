@@ -21,57 +21,55 @@ int main(int argc, char **argv) {
   // sparsity map
   std::vector<std::vector<ap_uint<PARAM_WIDTH>,
                           aligned_allocator<ap_uint<PARAM_WIDTH>>>>
-      in_loop_count(NUM_MEM_BANKS,
+      in_loop_count(NUM_CU,
                     std::vector<ap_uint<PARAM_WIDTH>,
                                 aligned_allocator<ap_uint<PARAM_WIDTH>>>(
-                        NUM_CU_PER_BANK * MAX_ACT_ITRS, 0));
+                        MAX_ACT_ITRS, 0));
   // sparsity map
   std::vector<std::vector<ap_uint<PARAM_WIDTH>,
                           aligned_allocator<ap_uint<PARAM_WIDTH>>>>
-      NNZ(NUM_MEM_BANKS, std::vector<ap_uint<PARAM_WIDTH>,
-                                     aligned_allocator<ap_uint<PARAM_WIDTH>>>(
-                             NUM_CU_PER_BANK * MAX_ACT_ITRS, 0));
+      NNZ(NUM_CU, std::vector<ap_uint<PARAM_WIDTH>,
+                              aligned_allocator<ap_uint<PARAM_WIDTH>>>(
+                      MAX_ACT_ITRS, 0));
 
   // weight values
   std::vector<std::vector<ap_uint<PARAM_WIDTH>,
                           aligned_allocator<ap_uint<PARAM_WIDTH>>>>
-      weight_values(NUM_MEM_BANKS,
+      weight_values(NUM_CU,
                     std::vector<ap_uint<PARAM_WIDTH>,
                                 aligned_allocator<ap_uint<PARAM_WIDTH>>>(
-                        NUM_CU_PER_BANK * OFF_CHIP_W_MAX_ROWS, 0));
+                        OFF_CHIP_W_MAX_ROWS, 0));
 
   // weight indices
   std::vector<std::vector<ap_uint<PARAM_WIDTH>,
                           aligned_allocator<ap_uint<PARAM_WIDTH>>>>
-      weight_indices(NUM_MEM_BANKS,
+      weight_indices(NUM_CU,
                      std::vector<ap_uint<PARAM_WIDTH>,
                                  aligned_allocator<ap_uint<PARAM_WIDTH>>>(
-                         NUM_CU_PER_BANK * OFF_CHIP_W_MAX_ROWS, 0));
+                         OFF_CHIP_W_MAX_ROWS, 0));
 
   // input activations
   std::vector<std::vector<Coef_Bundle, aligned_allocator<Coef_Bundle>>> in_act(
-      NUM_MEM_BANKS, std::vector<Coef_Bundle, aligned_allocator<Coef_Bundle>>(
-                         NUM_CU_PER_BANK * CIN_PER_CU * K_H * K_W * R *
-                         NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT));
+      NUM_CU, std::vector<Coef_Bundle, aligned_allocator<Coef_Bundle>>(
+                  CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+                  COEF_PER_BEAT));
 
   // output activations
   std::vector<std::vector<Coef_Bundle, aligned_allocator<Coef_Bundle>>> out_act(
-      NUM_MEM_BANKS, std::vector<Coef_Bundle, aligned_allocator<Coef_Bundle>>(
-                         NUM_CU_PER_BANK * COUT_PER_CU * R *
-                         NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT));
+      NUM_CU, std::vector<Coef_Bundle, aligned_allocator<Coef_Bundle>>(
+                  COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT));
 
   // Initialize input data
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
-    for (int j = 0; j < NUM_CU_PER_BANK * CIN_PER_CU * K_H * K_W * R *
-                            NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT;
+  for (int i = 0; i < NUM_CU; i++) {
+    for (int j = 0; j < CIN_PER_CU * K_H * K_W * R * NUM_CIPHERTEXT_POLY * N /
+                            COEF_PER_BEAT;
          j++) {
       for (int k = 0; k < COEF_PER_BEAT; k++) {
         in_act[i][j]((k + 1) * COEF_WIDTH - 1, k * COEF_WIDTH) = std::rand();
       }
     }
-    for (int j = 0; j < NUM_CU_PER_BANK * COUT_PER_CU * R *
-                            NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT;
-         j++) {
+    for (int j = 0;
+         j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
       for (int k = 0; k < COEF_PER_BEAT; k++) {
         out_act[i][j]((k + 1) * COEF_WIDTH - 1, k * COEF_WIDTH) = 0;
       }
@@ -99,11 +97,8 @@ int main(int argc, char **argv) {
       row.push_back(buf);
 
     unsigned int num = static_cast<unsigned int>(row[0]);
-    for (unsigned int i = 0; i < NUM_MEM_BANKS; i++) {
-      NNZ[i][0 * MAX_ACT_ITRS + row_id] = num;
-      NNZ[i][1 * MAX_ACT_ITRS + row_id] = num;
-      NNZ[i][2 * MAX_ACT_ITRS + row_id] = num;
-      NNZ[i][3 * MAX_ACT_ITRS + row_id] = num;
+    for (unsigned int i = 0; i < NUM_CU; i++) {
+      NNZ[i][row_id] = num;
     }
 
     row_id++;
@@ -129,11 +124,8 @@ int main(int argc, char **argv) {
       row.push_back(buf);
 
     unsigned int num = static_cast<unsigned int>(row[0]);
-    for (unsigned int i = 0; i < NUM_MEM_BANKS; i++) {
-      in_loop_count[i][0 * MAX_ACT_ITRS + row_id] = num;
-      in_loop_count[i][1 * MAX_ACT_ITRS + row_id] = num;
-      in_loop_count[i][2 * MAX_ACT_ITRS + row_id] = num;
-      in_loop_count[i][3 * MAX_ACT_ITRS + row_id] = num;
+    for (unsigned int i = 0; i < NUM_CU; i++) {
+      in_loop_count[i][row_id] = num;
     }
 
     row_id++;
@@ -159,9 +151,7 @@ int main(int argc, char **argv) {
       row.push_back(buf);
 
     for (unsigned int i = 0; i < row.size(); i++) {
-      weight_values[i / NUM_MEM_BANKS]
-                   [i % NUM_MEM_BANKS * OFF_CHIP_W_MAX_ROWS + row_id] =
-                       static_cast<unsigned int>(row[i]);
+      weight_values[i][row_id] = static_cast<unsigned int>(row[i]);
     }
     row_id++;
   }
@@ -186,9 +176,7 @@ int main(int argc, char **argv) {
       row.push_back(buf);
 
     for (unsigned int i = 0; i < row.size(); i++) {
-      weight_indices[i / NUM_MEM_BANKS]
-                    [i % NUM_MEM_BANKS * OFF_CHIP_W_MAX_ROWS + row_id] =
-                        static_cast<unsigned int>(row[i]);
+      weight_indices[i][row_id] = static_cast<unsigned int>(row[i]);
     }
     row_id++;
   }
@@ -209,27 +197,39 @@ int main(int argc, char **argv) {
   // }
 
   // device pointers
-  std::vector<cl_mem_ext_ptr_t> in_loop_count_ext(NUM_MEM_BANKS);
-  std::vector<cl_mem_ext_ptr_t> NNZ_ext(NUM_MEM_BANKS);
-  std::vector<cl_mem_ext_ptr_t> weight_values_ext(NUM_MEM_BANKS);
-  std::vector<cl_mem_ext_ptr_t> weight_indices_ext(NUM_MEM_BANKS);
-  std::vector<cl_mem_ext_ptr_t> in_act_ext(NUM_MEM_BANKS);
-  std::vector<cl_mem_ext_ptr_t> out_act_ext(NUM_MEM_BANKS);
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
-    in_loop_count_ext[i].flags = XCL_MEM_DDR_BANK1;
-    NNZ_ext[i].flags = XCL_MEM_DDR_BANK1;
-    weight_values_ext[i].flags = XCL_MEM_DDR_BANK1;
-    weight_indices_ext[i].flags = XCL_MEM_DDR_BANK1;
-    if (i < 1) {
+  std::vector<cl_mem_ext_ptr_t> in_loop_count_ext(NUM_CU);
+  std::vector<cl_mem_ext_ptr_t> NNZ_ext(NUM_CU);
+  std::vector<cl_mem_ext_ptr_t> weight_values_ext(NUM_CU);
+  std::vector<cl_mem_ext_ptr_t> weight_indices_ext(NUM_CU);
+  std::vector<cl_mem_ext_ptr_t> in_act_ext(NUM_CU);
+  std::vector<cl_mem_ext_ptr_t> out_act_ext(NUM_CU);
+  for (int i = 0; i < NUM_CU; i++) {
+    if (i < 4) {
+      in_loop_count_ext[i].flags = XCL_MEM_DDR_BANK0;
+      NNZ_ext[i].flags = XCL_MEM_DDR_BANK0;
+      weight_values_ext[i].flags = XCL_MEM_DDR_BANK0;
+      weight_indices_ext[i].flags = XCL_MEM_DDR_BANK0;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK0;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK0;
-    } else if (i < 2) {
+    } else if (i < 8) {
+      in_loop_count_ext[i].flags = XCL_MEM_DDR_BANK1;
+      NNZ_ext[i].flags = XCL_MEM_DDR_BANK1;
+      weight_values_ext[i].flags = XCL_MEM_DDR_BANK1;
+      weight_indices_ext[i].flags = XCL_MEM_DDR_BANK1;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK1;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK1;
-    } else if (i < 3) {
+    } else if (i < 12) {
+      in_loop_count_ext[i].flags = XCL_MEM_DDR_BANK2;
+      NNZ_ext[i].flags = XCL_MEM_DDR_BANK2;
+      weight_values_ext[i].flags = XCL_MEM_DDR_BANK2;
+      weight_indices_ext[i].flags = XCL_MEM_DDR_BANK2;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK2;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK2;
-    } else {
+    } else if (i < 16) {
+      in_loop_count_ext[i].flags = XCL_MEM_DDR_BANK3;
+      NNZ_ext[i].flags = XCL_MEM_DDR_BANK3;
+      weight_values_ext[i].flags = XCL_MEM_DDR_BANK3;
+      weight_indices_ext[i].flags = XCL_MEM_DDR_BANK3;
       in_act_ext[i].flags = XCL_MEM_DDR_BANK3;
       out_act_ext[i].flags = XCL_MEM_DDR_BANK3;
     }
@@ -265,13 +265,9 @@ int main(int argc, char **argv) {
   cl::Program::Binaries bins{{fileBuf.data(), fileBuf.size()}};
   cl::Program program(context, {device}, bins, nullptr, &err);
   auto end_program = std::chrono::steady_clock::now();
-  double program_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                            end_program - start_program)
-                            .count();
+  double program_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end_program - start_program).count();
   program_time *= 1e-9;
-  std::cout << "FPGA program time: " << program_time * 1000 << " msec"
-            << std::endl;
-  ;
+  std::cout << "FPGA program time: " << program_time * 1000 << " msec" << std::endl;;
 
   // Create kernels specific to compute unit.
   OCL_CHECK(err, krnl_he_snn = cl::Kernel(program, krnl_name.c_str(), &err));
@@ -279,66 +275,63 @@ int main(int argc, char **argv) {
   // Allocate Buffer in Global Memory
   // Buffers are allocated using CL_MEM_USE_HOST_PTR for efficient memory and
   // Device-to-host communication
-  std::vector<cl::Buffer> buffer_in_loop_count(NUM_MEM_BANKS);
-  std::vector<cl::Buffer> buffer_NNZ(NUM_MEM_BANKS);
-  std::vector<cl::Buffer> buffer_weight_values(NUM_MEM_BANKS);
-  std::vector<cl::Buffer> buffer_weight_indices(NUM_MEM_BANKS);
-  std::vector<cl::Buffer> buffer_in_act(NUM_MEM_BANKS);
-  std::vector<cl::Buffer> buffer_out_act(NUM_MEM_BANKS);
+  std::vector<cl::Buffer> buffer_in_loop_count(NUM_CU);
+  std::vector<cl::Buffer> buffer_NNZ(NUM_CU);
+  std::vector<cl::Buffer> buffer_weight_values(NUM_CU);
+  std::vector<cl::Buffer> buffer_weight_indices(NUM_CU);
+  std::vector<cl::Buffer> buffer_in_act(NUM_CU);
+  std::vector<cl::Buffer> buffer_out_act(NUM_CU);
 
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+  for (int i = 0; i < NUM_CU; i++) {
     // read-only buffers
-    OCL_CHECK(err, buffer_in_loop_count[i] =
+    OCL_CHECK(
+        err, buffer_in_loop_count[i] = cl::Buffer(
+                 context,
+                 CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
+                 MAX_ACT_ITRS * BYTES_INT64, &in_loop_count_ext[i], &err));
+    OCL_CHECK(
+        err, buffer_NNZ[i] = cl::Buffer(
+                 context,
+                 CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
+                 MAX_ACT_ITRS * BYTES_INT64, &NNZ_ext[i], &err));
+    OCL_CHECK(err, buffer_weight_values[i] =
                        cl::Buffer(context,
                                   CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY |
                                       CL_MEM_EXT_PTR_XILINX,
-                                  NUM_CU_PER_BANK * MAX_ACT_ITRS * BYTES_INT64,
-                                  &in_loop_count_ext[i], &err));
-    OCL_CHECK(err, buffer_NNZ[i] =
+                                  OFF_CHIP_W_MAX_ROWS * BYTES_INT64,
+                                  &weight_values_ext[i], &err));
+    OCL_CHECK(err, buffer_weight_indices[i] =
                        cl::Buffer(context,
                                   CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY |
                                       CL_MEM_EXT_PTR_XILINX,
-                                  NUM_CU_PER_BANK * MAX_ACT_ITRS * BYTES_INT64,
-                                  &NNZ_ext[i], &err));
+                                  OFF_CHIP_W_MAX_ROWS * BYTES_INT64,
+                                  &weight_indices_ext[i], &err));
     OCL_CHECK(
-        err, buffer_weight_values[i] = cl::Buffer(
+        err, buffer_in_act[i] = cl::Buffer(
                  context,
                  CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
-                 NUM_CU_PER_BANK * OFF_CHIP_W_MAX_ROWS * BYTES_INT64,
-                 &weight_values_ext[i], &err));
-    OCL_CHECK(
-        err, buffer_weight_indices[i] = cl::Buffer(
-                 context,
-                 CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
-                 NUM_CU_PER_BANK * OFF_CHIP_W_MAX_ROWS * BYTES_INT64,
-                 &weight_indices_ext[i], &err));
-    OCL_CHECK(
-        err,
-        buffer_in_act[i] = cl::Buffer(
-            context,
-            CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX,
-            NUM_CU_PER_BANK * CIN_PER_CU * K_H * K_W * CIPHERTEXT * BYTES_INT64,
-            &in_act_ext[i], &err));
-    OCL_CHECK(err, buffer_out_act[i] = cl::Buffer(
-                       context,
-                       CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY |
-                           CL_MEM_EXT_PTR_XILINX,
-                       NUM_CU_PER_BANK * COUT_PER_CU * CIPHERTEXT * BYTES_INT64,
-                       &out_act_ext[i], &err));
+                 CIN_PER_CU * K_H * K_W * CIPHERTEXT * BYTES_INT64,
+                 &in_act_ext[i], &err));
+    OCL_CHECK(err, buffer_out_act[i] =
+                       cl::Buffer(context,
+                                  CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY |
+                                      CL_MEM_EXT_PTR_XILINX,
+                                  COUT_PER_CU * CIPHERTEXT * BYTES_INT64,
+                                  &out_act_ext[i], &err));
   }
 
   // Using events to ensure dependencies
-  std::vector<cl::Event> in_loop_count_write_event(NUM_MEM_BANKS);
-  std::vector<cl::Event> NNZ_write_event(NUM_MEM_BANKS);
-  std::vector<cl::Event> weight_values_write_event(NUM_MEM_BANKS);
-  std::vector<cl::Event> weight_indices_write_event(NUM_MEM_BANKS);
-  std::vector<cl::Event> in_act_write_event(NUM_MEM_BANKS);
-  std::vector<cl::Event> out_act_read_event(NUM_MEM_BANKS);
+  std::vector<cl::Event> in_loop_count_write_event(NUM_CU);
+  std::vector<cl::Event> NNZ_write_event(NUM_CU);
+  std::vector<cl::Event> weight_values_write_event(NUM_CU);
+  std::vector<cl::Event> weight_indices_write_event(NUM_CU);
+  std::vector<cl::Event> in_act_write_event(NUM_CU);
+  std::vector<cl::Event> out_act_read_event(NUM_CU);
   std::vector<cl::Event> waiting_events;
   cl::Event task_event;
 
   // Copy input data to device global memory
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+  for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
                        {buffer_in_loop_count[i]}, 0 /* 0 means from host*/,
                        NULL, &in_loop_count_write_event[i]));
@@ -360,21 +353,21 @@ int main(int argc, char **argv) {
   // Copy kernel arguments
   int num_args = 0;
   OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_in_loop_count[0]));
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+  for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_NNZ[i]));
   }
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+  for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err,
               err = krnl_he_snn.setArg(num_args++, buffer_weight_values[i]));
   }
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+  for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err,
               err = krnl_he_snn.setArg(num_args++, buffer_weight_indices[i]));
   }
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+  for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_in_act[i]));
   }
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+  for (int i = 0; i < NUM_CU; i++) {
     OCL_CHECK(err, err = krnl_he_snn.setArg(num_args++, buffer_out_act[i]));
   }
 
@@ -385,7 +378,7 @@ int main(int argc, char **argv) {
             err = q.enqueueTask(krnl_he_snn, &waiting_events, &task_event));
   waiting_events.push_back(task_event);
 
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+  for (int i = 0; i < NUM_CU; i++) {
     // Copy Result from Device Global Memory to Host Local Memory
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
                        {buffer_out_act[i]}, CL_MIGRATE_MEM_OBJECT_HOST,
@@ -393,17 +386,16 @@ int main(int argc, char **argv) {
   }
 
   // Wait kernel to finish
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
+  for (int i = 0; i < NUM_CU; i++) {
     out_act_read_event[i].wait();
   }
   // OPENCL HOST CODE AREA END
 
   // Compare the results of the Device to the simulation
   unsigned int mismatch_count = 0;
-  for (int i = 0; i < NUM_MEM_BANKS; i++) {
-    for (int j = 0; j < NUM_CU_PER_BANK * COUT_PER_CU * R *
-                            NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT;
-         j++) {
+  for (int i = 0; i < NUM_CU; i++) {
+    for (int j = 0;
+         j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
       if (out_act[i][j] != in_act[i][j]) {
         mismatch_count++;
       }

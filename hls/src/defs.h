@@ -10,7 +10,7 @@
 #define C_OUT 64
 #define COUT_PER_BANK 16
 #define COUT_PER_CU 4
-#define CIN_PER_CU 2
+#define CIN_PER_CU 1
 #define K_H 3
 #define K_W 3
 #define STRIDE_HW 2
