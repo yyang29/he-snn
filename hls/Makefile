@@ -27,6 +27,7 @@ help::
 
 TARGET := sw_emu
 HOST_ARCH := x86
+#DEVICE := xilinx_u200_gen3x16_xdma_1_202110_1
 DEVICE := xilinx_u200_xdma_201830_2
 
 #Generates profile summary report

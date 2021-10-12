@@ -1,5 +1,6 @@
 #include "xcl2.h"
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -64,13 +65,13 @@ int main(int argc, char **argv) {
                             COEF_PER_BEAT;
          j++) {
       for (int k = 0; k < COEF_PER_BEAT; k++) {
-        in_act[i][j].data[k] = std::rand();
+        in_act[i][j]((k + 1) * COEF_WIDTH - 1, k * COEF_WIDTH) = std::rand();
       }
     }
     for (int j = 0;
          j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
       for (int k = 0; k < COEF_PER_BEAT; k++) {
-        out_act[i][j].data[k] = 0;
+        out_act[i][j]((k + 1) * COEF_WIDTH - 1, k * COEF_WIDTH) = 0;
       }
     }
   }
@@ -259,9 +260,14 @@ int main(int argc, char **argv) {
 
   // read_binary_file() is a utility API which will load the binaryFile
   // and will return the pointer to file buffer.
+  auto start_program = std::chrono::steady_clock::now();
   auto fileBuf = xcl::read_binary_file(static_cast<std::string>(argv[1]));
   cl::Program::Binaries bins{{fileBuf.data(), fileBuf.size()}};
   cl::Program program(context, {device}, bins, nullptr, &err);
+  auto end_program = std::chrono::steady_clock::now();
+  double program_time = std::chrono::duration_cast<std::chrono::nanoseconds>(end_program - start_program).count();
+  program_time *= 1e-9;
+  std::cout << "FPGA program time: " << program_time * 1000 << " msec" << std::endl;;
 
   // Create kernels specific to compute unit.
   OCL_CHECK(err, krnl_he_snn = cl::Kernel(program, krnl_name.c_str(), &err));
@@ -390,10 +396,8 @@ int main(int argc, char **argv) {
   for (int i = 0; i < NUM_CU; i++) {
     for (int j = 0;
          j < COUT_PER_CU * R * NUM_CIPHERTEXT_POLY * N / COEF_PER_BEAT; j++) {
-      for (int k = 0; k < COEF_PER_BEAT; k++) {
-        if (out_act[i][j].data[k] != in_act[i][j].data[k]) {
-          mismatch_count++;
-        }
+      if (out_act[i][j] != in_act[i][j]) {
+        mismatch_count++;
       }
     }
   }
