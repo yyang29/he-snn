@@ -10,7 +10,7 @@
 #define C_OUT 64
 #define COUT_PER_BANK 16
 #define COUT_PER_CU 4
-#define CIN_PER_CU 1
+#define CIN_PER_CU 4
 #define K_H 3
 #define K_W 3
 #define STRIDE_HW 2
@@ -20,7 +20,7 @@
 #define PAD_BOTTOM 0
 
 // hardware config
-#define NUM_CU 16
+#define NUM_CU 8
 #define NUM_MEM_BANKS 4
 #define NUM_CU_PER_BANK (NUM_CU / NUM_MEM_BANKS)
 
@@ -44,7 +44,7 @@ struct Polynomial {
   ap_uint<COEF_WIDTH> data[N];
 };
 
-#define COEF_BUNDLE_BITS 256
+#define COEF_BUNDLE_BITS 1024
 #define COEF_PER_BEAT (COEF_BUNDLE_BITS / COEF_WIDTH)
 
 // struct Coef_Bundle {
